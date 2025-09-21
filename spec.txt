@@ -1,0 +1,151 @@
+📋 Spécifications fonctionnelles et techniques – Application d’entraînement à l’oral appelé "Parle"
+🎯 Objectif
+
+(besoin de base:
+voici ce que je veux faire. créer une application qui me permet de scaner quelques pages d'un livre, convertir en texte et l'envoyer à un systeme de correcteur de prononciation, d'intonation et de rythme qui m'écoutera lire les textes du livre en live et si dans une phrase j'ai marmoné, écorché un mot, sauter, etc ou si j'ai garder un ton plat sans intonation et rythme, il l'afficher la phrase en question, met en évidence les points problèmatique et pour l'intonation et la rythme éloquent j'aurai juste à lire cliquer "lire" pour entendre le ou les bons rythmes et intonations . je reli la phrase problèmatique et si je réussi je passe je continue la lecture. à la fin de chaque deux paragraphe; je passen en mode resumer où je restitue en mes propres mots ce qui est dit dans les deux paragraphes. le système évalue la pertinence de mon resumé, les transition(mots ou phrases de transitions) inapropriée, les lapsus, etc et me fait aussi deux ou trois proposition de résumer, de transition, une mise en évendence des mots éventuellement écorché. puis on passse aux deux prochains paragraphes( lecture suivit de restitution) et ainsi de suite jusqu'à ce que je finisse mes pages. dis-mois sur une échelle de 1 à 10 à quel point cette application peut m'aider à progresser à l'orale . puis en parlera de comment de comment développer l'appli
+)
+cahier des charges:
+
+Développer une application qui aide l’utilisateur à améliorer son aisance orale en lisant des textes (extraits de livres) à voix haute.
+L’application :
+
+Permet de scanner et convertir des pages de livre en texte.
+
+Suit en temps réel la lecture orale de l’utilisateur.
+
+Détecte les erreurs (prononciation, rythme, intonation, mots sautés, etc.).
+
+Fournit un feedback visuel et audio (exemple correct).
+
+Tous les deux paragraphes, demande un résumé oral et fournit une évaluation + suggestions.
+
+🖥️ Frontend (Vue.js)
+
+Interface simple et claire :
+
+Écran principal avec le texte affiché paragraphe par paragraphe.
+
+Surlignage des phrases en cours de lecture.
+
+Feedback visuel après lecture :
+
+✅ mots corrects
+
+⚠️ mots marmonnés / mal prononcés
+
+❌ mots sautés / déformés
+
+Bouton “Lire (modèle)” → lecture audio correcte (intonation/rythme).
+
+Mode résumé : champ d’enregistrement vocal → affichage du feedback.
+
+Tableau de bord : progression de l’utilisateur (score, erreurs fréquentes, améliorations).
+
+⚙️ Backend (FastAPI)
+1. OCR (texte à partir d’images)
+
+Technos gratuites : Tesseract OCR via pytesseract.
+
+API : /ocr/upload → reçoit une image scannée → renvoie le texte extrait (structuré en paragraphes).
+
+2. Reconnaissance vocale & alignement
+
+Technos gratuites : OpenAI Whisper (modèle local, ex. whisper.cpp ou faster-whisper).
+
+API : /speech/analyze → reçoit un enregistrement vocal + texte attendu → renvoie :
+
+Transcription de ce que l’utilisateur a dit.
+
+Comparaison avec le texte attendu (alignement).
+
+Détails : mots sautés, mal prononcés, débit trop rapide, intonation monotone.
+
+3. Analyse prosodique (intonation, rythme)
+
+Utilisation de parselmouth (Praat) ou librosa pour extraire :
+
+Courbe de pitch (intonation).
+
+Vitesse de lecture (rythme).
+
+Pauses et fluidité.
+
+Résultat renvoyé sous forme de score + feedback.
+
+4. Feedback audio (modèle correct)
+
+Synthèse vocale gratuite / open-source :
+
+gTTS (Google Text-to-Speech, gratuit mais basique).
+
+Ou Coqui TTS (open-source, voix plus naturelles).
+
+API : /tts/read → reçoit une phrase → renvoie un fichier audio (version correcte à écouter).
+
+5. Mode résumé (tous les 2 paragraphes)
+
+L’utilisateur enregistre un résumé oral → envoi audio → transcription (Whisper).
+
+Analyse avec un modèle de langage (gratuit si possible, ex. LLaMA 3 local via llama.cpp, sinon GPT-4/5 API).
+
+Vérifications :
+
+Pertinence du résumé (idées principales présentes).
+
+Qualité des transitions et fluidité.
+
+Détection de lapsus / incohérences.
+
+Génération de 2–3 suggestions alternatives (phrases de transition, résumé plus fluide).
+
+API : /summary/evaluate → reçoit l’audio et le texte source → renvoie feedback + suggestions.
+
+🗄️ Base de données
+
+PostgreSQL (gratuit et robuste).
+
+Tables principales :
+
+users → infos utilisateur.
+
+texts → textes extraits des livres.
+
+readings → enregistrements + résultats d’analyse.
+
+summaries → résumés oraux + feedback.
+
+stats → scores de progression (erreurs fréquentes, intonation, fluidité).
+
+🔄 Flux utilisateur
+
+L’utilisateur scanne une page → OCR → texte affiché.
+
+Il lit à voix haute → l’app enregistre → envoie à l’API → reçoit feedback visuel 
+
+Si problème → phrase surlignée + bouton “Lire modèle” → réécoute et répète.
+
+Tous les 2 paragraphes → mode résumé oral → feedback + suggestions → l’utilisateur s’améliore.
+
+Stats mises à jour → suivi des progrès.
+
+🚀 MVP (Version 1 à développer en priorité)
+
+OCR → texte → affichage.
+
+Lecture utilisateur → transcription (Whisper) → comparaison simple avec le texte attendu.
+
+Feedback basique : mots manqués / mal lus (affichés en couleur).
+
+Synthèse vocale basique (gTTS) pour proposer un modèle.
+
+Résumé oral → transcription + comparaison simple avec texte source.
+
+Évolutions possibles:
+
+Mode “conversation improvisée” (pas seulement lecture).
+
+Ajout d’un score gamifié (points, badges).
+
+Analyse de langage corporel si webcam activée (gestuelle, posture).
+
+Partage des progrès (export résumé audio/texte).

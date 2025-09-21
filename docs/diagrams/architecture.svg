@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1200" height="800" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      .title { font-family: Arial, sans-serif; font-size: 24px; font-weight: bold; fill: #2c3e50; }
+      .subtitle { font-family: Arial, sans-serif; font-size: 16px; font-weight: bold; fill: #34495e; }
+      .text { font-family: Arial, sans-serif; font-size: 12px; fill: #2c3e50; }
+      .box { fill: #ecf0f1; stroke: #bdc3c7; stroke-width: 2; }
+      .frontend { fill: #3498db; stroke: #2980b9; }
+      .backend { fill: #e74c3c; stroke: #c0392b; }
+      .database { fill: #27ae60; stroke: #229954; }
+      .ai { fill: #f39c12; stroke: #e67e22; }
+      .arrow { stroke: #2c3e50; stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2c3e50" />
+    </marker>
+  </defs>
+  
+  <!-- Title -->
+  <text x="600" y="30" text-anchor="middle" class="title">Architecture du Projet Parle</text>
+  
+  <!-- Frontend Layer -->
+  <rect x="50" y="80" width="300" height="200" class="box frontend" rx="10"/>
+  <text x="200" y="105" text-anchor="middle" class="subtitle">Frontend (Vue.js)</text>
+  
+  <rect x="70" y="120" width="120" height="40" class="box" rx="5"/>
+  <text x="130" y="145" text-anchor="middle" class="text">Interface Utilisateur</text>
+  
+  <rect x="210" y="120" width="120" height="40" class="box" rx="5"/>
+  <text x="270" y="145" text-anchor="middle" class="text">Composants Vue</text>
+  
+  <rect x="70" y="180" width="120" height="40" class="box" rx="5"/>
+  <text x="130" y="205" text-anchor="middle" class="text">Services API</text>
+  
+  <rect x="210" y="180" width="120" height="40" class="box" rx="5"/>
+  <text x="270" y="205" text-anchor="middle" class="text">Gestion Audio</text>
+  
+  <!-- Backend Layer -->
+  <rect x="450" y="80" width="300" height="200" class="box backend" rx="10"/>
+  <text x="600" y="105" text-anchor="middle" class="subtitle">Backend (FastAPI)</text>
+  
+  <rect x="470" y="120" width="120" height="40" class="box" rx="5"/>
+  <text x="530" y="145" text-anchor="middle" class="text">API REST</text>
+  
+  <rect x="610" y="120" width="120" height="40" class="box" rx="5"/>
+  <text x="670" y="145" text-anchor="middle" class="text">Authentification</text>
+  
+  <rect x="470" y="180" width="120" height="40" class="box" rx="5"/>
+  <text x="530" y="205" text-anchor="middle" class="text">Gestion Fichiers</text>
+  
+  <rect x="610" y="180" width="120" height="40" class="box" rx="5"/>
+  <text x="670" y="205" text-anchor="middle" class="text">Logique Métier</text>
+  
+  <!-- AI Services Layer -->
+  <rect x="850" y="80" width="300" height="200" class="box ai" rx="10"/>
+  <text x="1000" y="105" text-anchor="middle" class="subtitle">Services IA</text>
+  
+  <rect x="870" y="120" width="120" height="40" class="box" rx="5"/>
+  <text x="930" y="145" text-anchor="middle" class="text">Tesseract OCR</text>
+  
+  <rect x="1010" y="120" width="120" height="40" class="box" rx="5"/>
+  <text x="1070" y="145" text-anchor="middle" class="text">Whisper STT</text>
+  
+  <rect x="870" y="180" width="120" height="40" class="box" rx="5"/>
+  <text x="930" y="205" text-anchor="middle" class="text">gTTS/Coqui</text>
+  
+  <rect x="1010" y="180" width="120" height="40" class="box" rx="5"/>
+  <text x="1070" y="205" text-anchor="middle" class="text">Analyse Prosodique</text>
+  
+  <!-- Database Layer -->
+  <rect x="450" y="350" width="300" height="150" class="box database" rx="10"/>
+  <text x="600" y="375" text-anchor="middle" class="subtitle">Base de Données (PostgreSQL)</text>
+  
+  <rect x="470" y="390" width="120" height="30" class="box" rx="5"/>
+  <text x="530" y="410" text-anchor="middle" class="text">Users</text>
+  
+  <rect x="610" y="390" width="120" height="30" class="box" rx="5"/>
+  <text x="670" y="410" text-anchor="middle" class="text">Texts</text>
+  
+  <rect x="470" y="430" width="120" height="30" class="box" rx="5"/>
+  <text x="530" y="450" text-anchor="middle" class="text">Readings</text>
+  
+  <rect x="610" y="430" width="120" height="30" class="box" rx="5"/>
+  <text x="670" y="450" text-anchor="middle" class="text">Summaries</text>
+  
+  <rect x="540" y="470" width="120" height="30" class="box" rx="5"/>
+  <text x="600" y="490" text-anchor="middle" class="text">Stats</text>
+  
+  <!-- External Services -->
+  <rect x="50" y="350" width="300" height="150" class="box" rx="10"/>
+  <text x="200" y="375" text-anchor="middle" class="subtitle">Services Externes</text>
+  
+  <rect x="70" y="390" width="120" height="30" class="box" rx="5"/>
+  <text x="130" y="410" text-anchor="middle" class="text">Upload Images</text>
+  
+  <rect x="210" y="390" width="120" height="30" class="box" rx="5"/>
+  <text x="270" y="410" text-anchor="middle" class="text">Enregistrement Audio</text>
+  
+  <rect x="70" y="430" width="120" height="30" class="box" rx="5"/>
+  <text x="130" y="450" text-anchor="middle" class="text">Playback Audio</text>
+  
+  <rect x="210" y="430" width="120" height="30" class="box" rx="5"/>
+  <text x="270" y="450" text-anchor="middle" class="text">Feedback Visuel</text>
+  
+  <rect x="140" y="470" width="120" height="30" class="box" rx="5"/>
+  <text x="200" y="490" text-anchor="middle" class="text">Export/Import</text>
+  
+  <!-- Arrows -->
+  <line x1="350" y1="180" x2="450" y2="180" class="arrow"/>
+  <line x1="600" y1="280" x2="600" y2="350" class="arrow"/>
+  <line x1="750" y1="180" x2="850" y2="180" class="arrow"/>
+  <line x1="600" y1="180" x2="600" y2="350" class="arrow"/>
+  
+  <!-- Data Flow Labels -->
+  <text x="400" y="175" class="text">API Calls</text>
+  <text x="400" y="315" class="text">Data Storage</text>
+  <text x="800" y="175" class="text">AI Processing</text>
+  <text x="550" y="315" class="text">Data Persistence</text>
+  
+  <!-- Legend -->
+  <rect x="50" y="550" width="1100" height="200" class="box" rx="10"/>
+  <text x="600" y="575" text-anchor="middle" class="subtitle">Légende des Composants</text>
+  
+  <rect x="80" y="590" width="20" height="15" class="frontend"/>
+  <text x="110" y="602" class="text">Frontend - Interface utilisateur</text>
+  
+  <rect x="80" y="610" width="20" height="15" class="backend"/>
+  <text x="110" y="622" class="text">Backend - API et logique métier</text>
+  
+  <rect x="80" y="630" width="20" height="15" class="database"/>
+  <text x="110" y="642" class="text">Base de données - Persistance des données</text>
+  
+  <rect x="80" y="650" width="20" height="15" class="ai"/>
+  <text x="110" y="662" class="text">Services IA - OCR, STT, TTS, Analyse</text>
+  
+  <rect x="80" y="670" width="20" height="15" class="box"/>
+  <text x="110" y="682" class="text">Services externes - Upload, Audio, Export</text>
+  
+  <rect x="80" y="690" width="20" height="15" class="box"/>
+  <text x="110" y="702" class="text">Flux de données</text>
+  <line x1="200" y1="697" x2="250" y2="697" class="arrow"/>
+  
+  <!-- Technology Stack -->
+  <text x="400" y="602" class="text">Vue.js 3 + TypeScript</text>
+  <text x="400" y="622" class="text">FastAPI + Python</text>
+  <text x="400" y="642" class="text">PostgreSQL</text>
+  <text x="400" y="662" class="text">Tesseract, Whisper, gTTS, Parselmouth</text>
+  <text x="400" y="682" class="text">Web APIs, File Upload, Audio Processing</text>
+</svg>
