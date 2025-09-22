@@ -26,13 +26,20 @@
             <div class="text-content" :class="{ 'highlighted': isRecording }">
               <p v-for="(sentence, index) in currentText" :key="index" 
                  :class="getSentenceClass(index)">
-                {{ sentence }}
+                <span v-for="(part, i) in tokenizeSentence(sentence)" :key="i" :class="{ 'word-error': part.isError, 'word': true }">{{ part.text }}</span>
               </p>
             </div>
           </div>
 
           <!-- Recording Controls -->
           <div class="recording-section">
+            <div class="recording-status" v-if="isRecording">
+              <span class="timer">{{ formattedTime }}</span>
+              <div class="vu-meter">
+                <div class="vu-fill" :style="{ width: vuLevel + '%' }"></div>
+              </div>
+              <canvas ref="waveformRef" class="waveform-canvas"></canvas>
+            </div>
             <el-button 
               v-if="!isRecording" 
               type="primary" 
@@ -152,7 +159,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { 
@@ -180,6 +187,22 @@ const loadingAudio = ref(false)
 const analysisResult = ref(null)
 const audioBlob = ref(null)
 const audioPlayer = ref(null)
+
+// Recording state
+const mediaRecorder = ref(null)
+const mediaStream = ref(null)
+const audioChunks = ref([])
+const audioContext = ref(null)
+const analyserNode = ref(null)
+const vuLevel = ref(0)
+const rafId = ref(null)
+const rafWaveId = ref(null)
+const recordSeconds = ref(0)
+let recordTimer = null
+const waveformRef = ref(null)
+
+// Error words cache
+const errorWords = ref(new Set())
 
 // Computed
 const readingProgress = computed(() => {
@@ -214,55 +237,198 @@ const loadText = () => {
 
 const startRecording = async () => {
   try {
-    isRecording.value = true
     hasRecording.value = false
     analysisResult.value = null
-    
-    // Simulation de l'enregistrement
-    ElMessage.info('Enregistrement en cours...')
-    
-    // Ici, vous intégreriez l'API d'enregistrement réel
-    setTimeout(() => {
-      stopRecording()
-    }, 3000)
-    
+    audioBlob.value = null
+
+    // Acquire microphone
+    // const stream = await navigator.mediaDevices.getUserMedia({
+    //   audio: {
+    //     echoCancellation: true,
+    //     noiseSuppression: true,
+    //     sampleRate: 44100
+    //   }
+    // })
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+    mediaStream.value = stream
+
+    // Create MediaRecorder
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : 'audio/webm'
+    mediaRecorder.value = new MediaRecorder(stream, { mimeType })
+    audioChunks.value = []
+
+    mediaRecorder.value.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) {
+        audioChunks.value.push(e.data)
+      }
+    }
+
+    mediaRecorder.value.onstop = () => {
+      const blob = new Blob(audioChunks.value, { type: mimeType })
+      audioBlob.value = blob
+      hasRecording.value = true
+      if (audioPlayer.value) {
+        audioPlayer.value.src = URL.createObjectURL(blob)
+      }
+    }
+
+    mediaRecorder.value.start()
+    isRecording.value = true
+
+    // Init audio context for VU meter (best-effort)
+    try {
+      audioContext.value = new (window.AudioContext || window.webkitAudioContext)()
+      const source = audioContext.value.createMediaStreamSource(stream)
+      analyserNode.value = audioContext.value.createAnalyser()
+      analyserNode.value.fftSize = 2048
+      source.connect(analyserNode.value)
+    } catch (e) {
+      console.warn('AudioContext init failed (waveform disabled):', e)
+      analyserNode.value = null
+    }
+
+    const dataArray = analyserNode.value ? new Uint8Array(analyserNode.value.fftSize) : null
+    const updateVu = () => {
+      if (!analyserNode.value || !dataArray) return
+      analyserNode.value.getByteTimeDomainData(dataArray)
+      // Compute RMS
+      let sum = 0
+      for (let i = 0; i < dataArray.length; i++) {
+        const v = (dataArray[i] - 128) / 128
+        sum += v * v
+      }
+      const rms = Math.sqrt(sum / dataArray.length)
+      vuLevel.value = Math.min(100, Math.max(0, Math.round(rms * 140)))
+      rafId.value = requestAnimationFrame(updateVu)
+    }
+    rafId.value = requestAnimationFrame(updateVu)
+
+    // Waveform drawing
+    const waveformCanvas = waveformRef.value
+    const drawWaveform = () => {
+      if (!analyserNode.value || !waveformCanvas) return
+      const canvas = waveformCanvas
+      const ctx = canvas.getContext('2d')
+      // Resize canvas to container width
+      const parentWidth = canvas.parentElement ? canvas.parentElement.clientWidth : 500
+      const height = 80
+      if (canvas.width !== parentWidth) canvas.width = parentWidth
+      if (canvas.height !== height) canvas.height = height
+
+      const bufferLength = analyserNode.value.fftSize
+      const data = new Uint8Array(bufferLength)
+      analyserNode.value.getByteTimeDomainData(data)
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      ctx.lineWidth = 2
+      ctx.strokeStyle = '#409EFF'
+      ctx.beginPath()
+
+      const sliceWidth = canvas.width / bufferLength
+      let x = 0
+      for (let i = 0; i < bufferLength; i++) {
+        const v = data[i] / 128.0
+        const y = (v * canvas.height) / 2
+        if (i === 0) ctx.moveTo(x, y)
+        else ctx.lineTo(x, y)
+        x += sliceWidth
+      }
+      ctx.lineTo(canvas.width, canvas.height / 2)
+      ctx.stroke()
+
+      rafWaveId.value = requestAnimationFrame(drawWaveform)
+    }
+    rafWaveId.value = requestAnimationFrame(drawWaveform)
+
+    // Timer
+    recordSeconds.value = 0
+    if (recordTimer) clearInterval(recordTimer)
+    recordTimer = setInterval(() => { recordSeconds.value += 1 }, 1000)
   } catch (error) {
-    ElMessage.error('Erreur lors du démarrage de l\'enregistrement')
+    console.error(error)
+    ElMessage.error('Impossible d\'accéder au microphone')
     isRecording.value = false
   }
 }
 
-const stopRecording = () => {
-  isRecording.value = false
-  hasRecording.value = true
-  ElMessage.success('Enregistrement terminé')
+const stopRecording = async () => {
+  if (!mediaRecorder.value || !isRecording.value) {
+    isRecording.value = false
+    return
+  }
+  try {
+    isRecording.value = false
+    // Wait for onstop to flush the last data chunk and build the blob
+    const stopPromise = new Promise((resolve) => {
+      const handleStop = () => {
+        mediaRecorder.value.removeEventListener('stop', handleStop)
+        resolve()
+      }
+      mediaRecorder.value.addEventListener('stop', handleStop)
+    })
+    mediaRecorder.value.stop()
+    await stopPromise
+
+    // Now it's safe to stop tracks and cleanup audio context
+    if (mediaStream.value) {
+      mediaStream.value.getTracks().forEach(t => t.stop())
+      mediaStream.value = null
+    }
+    if (rafId.value) cancelAnimationFrame(rafId.value)
+    if (rafWaveId.value) cancelAnimationFrame(rafWaveId.value)
+    if (audioContext.value) {
+      try { audioContext.value.close() } catch (_) {}
+      audioContext.value = null
+      analyserNode.value = null
+    }
+    if (recordTimer) { clearInterval(recordTimer); recordTimer = null }
+    ElMessage.success('Enregistrement terminé')
+  } catch (_) {
+    // noop
+  }
 }
 
 const analyzeRecording = async () => {
+  if (!audioBlob.value) {
+    ElMessage.warning('Aucun enregistrement disponible')
+    return
+  }
   try {
     analyzing.value = true
-    
-    // Simulation de l'analyse
-    const mockResult = {
-      transcription: "Ceci est un exemple de transcription simulée",
-      confidence: 85.5,
-      errors: [
-        { word: "exemple", type: "prononciation", severity: "medium" }
-      ],
-      prosody: {
-        rhythm: { regularity: 0.8 },
-        intonation: { monotone: false },
-        tempo: 120
-      }
+
+    const formData = new FormData()
+    const expectedText = currentText.value.join('. ').trim()
+    formData.append('audio_file', audioBlob.value, 'reading.webm')
+    if (expectedText) formData.append('expected_text', expectedText)
+
+    const { data } = await speechService.analyzeSpeech(formData)
+    analysisResult.value = {
+      transcription: data.transcription || '',
+      confidence: data.confidence ?? 0,
+      errors: data.errors || [],
+      prosody: data.prosody || { rhythm: { regularity: 0 }, intonation: { monotone: false }, tempo: 0 }
     }
-    
-    // Simuler un délai d'analyse
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    
-    analysisResult.value = mockResult
+    // Build error words set
+    errorWords.value = new Set((analysisResult.value.errors || []).map(e => String(e.word || '').toLowerCase()))
+
+    // Persist result and audio
+    const reader = new FileReader()
+    reader.onload = () => {
+      const key = 'readingResults'
+      const store = JSON.parse(localStorage.getItem(key) || '{}')
+      store[currentParagraph.value] = {
+        audioUrl: reader.result,
+        analysis: analysisResult.value
+      }
+      localStorage.setItem(key, JSON.stringify(store))
+    }
+    reader.readAsDataURL(audioBlob.value)
     ElMessage.success('Analyse terminée')
-    
   } catch (error) {
+    console.error(error)
     ElMessage.error('Erreur lors de l\'analyse')
   } finally {
     analyzing.value = false
@@ -292,9 +458,12 @@ const getSentenceClass = (index) => {
   if (!analysisResult.value) return ''
   
   // Simulation de la mise en évidence des erreurs
+  const sentence = currentText.value[index] || ''
+  const words = sentence.toLowerCase().split(/\s+/)
+  const hasErr = words.some(w => errorWords.value.has(w.replace(/[^\p{L}\p{N}'-]/gu, '')))
   return {
-    'error-sentence': index === 1, // Simuler une erreur sur la deuxième phrase
-    'correct-sentence': index !== 1
+    'error-sentence': hasErr,
+    'correct-sentence': !hasErr
   }
 }
 
@@ -339,7 +508,52 @@ const resetAnalysis = () => {
 // Lifecycle
 onMounted(() => {
   loadText()
+  // Restore stored analysis/audio per paragraph
+  try {
+    const store = JSON.parse(localStorage.getItem('readingResults') || '{}')
+    const saved = store[currentParagraph.value]
+    if (saved) {
+      analysisResult.value = saved.analysis
+      errorWords.value = new Set((saved.analysis?.errors || []).map(e => String(e.word || '').toLowerCase()))
+      hasRecording.value = !!saved.audioUrl
+      if (audioPlayer.value && saved.audioUrl) {
+        audioPlayer.value.src = saved.audioUrl
+      }
+    }
+  } catch (_) {}
 })
+
+onUnmounted(() => {
+  try {
+    if (mediaRecorder.value && mediaRecorder.value.state !== 'inactive') {
+      mediaRecorder.value.stop()
+    }
+  } catch (_) {}
+  if (mediaStream.value) {
+    mediaStream.value.getTracks().forEach(t => t.stop())
+  }
+})
+
+// Formatting helpers
+const formattedTime = computed(() => {
+  const m = String(Math.floor(recordSeconds.value / 60)).padStart(2, '0')
+  const s = String(recordSeconds.value % 60).padStart(2, '0')
+  return `${m}:${s}`
+})
+
+const tokenizeSentence = (sentence) => {
+  const parts = []
+  const tokens = sentence.split(/(\s+)/)
+  for (const tok of tokens) {
+    if (tok.trim().length === 0) {
+      parts.push({ text: tok, isError: false })
+      continue
+    }
+    const normalized = tok.toLowerCase().replace(/[^\p{L}\p{N}'-]/gu, '')
+    parts.push({ text: tok, isError: errorWords.value.has(normalized) })
+  }
+  return parts
+}
 </script>
 
 <style scoped>
@@ -425,6 +639,43 @@ onMounted(() => {
 
 .recording-section .el-button {
   margin: 0 10px;
+}
+
+.recording-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.timer {
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.vu-meter {
+  width: 100%;
+  max-width: 480px;
+  height: 8px;
+  background: #ebeef5;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.vu-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #67c23a, #e6a23c, #f56c6c);
+  transition: width 120ms linear;
+}
+
+.waveform-canvas {
+  width: 100%;
+  max-width: 640px;
+  height: 80px;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #ebeef5;
 }
 
 .analysis-section {

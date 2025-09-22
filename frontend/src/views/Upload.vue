@@ -22,7 +22,7 @@
             :file-list="fileList"
             :auto-upload="false"
             :on-change="handleFileChange"
-            accept="image/*"
+            accept="image/*;capture=camera"
           >
             <el-icon class="el-icon--upload"><upload-filled /></el-icon>
             <div class="el-upload__text">
@@ -45,7 +45,7 @@
             />
           </div>
 
-          <!-- Upload Button -->
+          <!-- Upload Actions -->
           <div class="upload-actions">
             <el-button 
               type="primary" 
@@ -57,7 +57,35 @@
               <el-icon><Upload /></el-icon>
               Traiter l'Image
             </el-button>
+
+            <el-button 
+              size="large"
+              @click="openCamera"
+            >
+              Ouvrir la Caméra
+            </el-button>
           </div>
+
+          <!-- Camera Dialog -->
+          <el-dialog
+            v-model="showCamera"
+            width="600px"
+            :close-on-click-modal="false"
+            @close="closeCamera"
+            title="Prendre une photo"
+          >
+            <div class="camera-wrapper">
+              <video ref="videoRef" autoplay playsinline class="camera-video"></video>
+              <canvas ref="canvasRef" class="camera-canvas" style="display:none"></canvas>
+            </div>
+
+            <template #footer>
+              <span class="dialog-footer">
+                <el-button @click="closeCamera">Annuler</el-button>
+                <el-button type="primary" @click="capturePhoto">Capturer</el-button>
+              </span>
+            </template>
+          </el-dialog>
 
           <!-- Processing Status -->
           <div v-if="processing" class="processing-status">
@@ -141,7 +169,7 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Upload, UploadFilled, Microphone, Refresh } from '@element-plus/icons-vue'
@@ -158,6 +186,12 @@ const progress = ref(0)
 const progressStatus = ref('')
 const processingText = ref('')
 const ocrResult = ref(null)
+
+// Camera
+const showCamera = ref(false)
+const videoRef = ref(null)
+const canvasRef = ref(null)
+const cameraStream = ref(null)
 
 // Upload configuration
 const uploadUrl = '/api/ocr/upload'
@@ -181,6 +215,18 @@ const handleFileChange = (file, files) => {
   }
   
   ElMessage.success('Image sélectionnée avec succès!')
+
+  // Persister l'image sélectionnée (si disponible sous forme d'URL)
+  try {
+    if (file && file.raw) {
+      const reader = new FileReader()
+      reader.onload = () => {
+        localStorage.setItem('lastUploadImage', reader.result)
+        localStorage.setItem('lastUploadName', file.name || file.raw.name || 'image.jpg')
+      }
+      reader.readAsDataURL(file.raw)
+    }
+  } catch (e) { /* noop */ }
   return true
 }
 
@@ -198,6 +244,103 @@ const beforeUpload = (file) => {
   }
   return true
 }
+
+// Camera helpers
+const openCamera = async () => {
+  showCamera.value = true
+  await nextTick()
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } },
+      audio: false
+    })
+    cameraStream.value = stream
+    if (videoRef.value) {
+      videoRef.value.srcObject = stream
+    }
+  } catch (err) {
+    ElMessage.error('Impossible d\'accéder à la caméra')
+    showCamera.value = false
+  }
+}
+
+const closeCamera = () => {
+  if (cameraStream.value) {
+    cameraStream.value.getTracks().forEach(t => t.stop())
+    cameraStream.value = null
+  }
+  showCamera.value = false
+}
+
+const capturePhoto = () => {
+  try {
+    const video = videoRef.value
+    const canvas = canvasRef.value
+    if (!video || !canvas) return
+    const width = video.videoWidth
+    const height = video.videoHeight
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(video, 0, 0, width, height)
+    canvas.toBlob((blob) => {
+      if (!blob) return
+      const fileName = `photo-${Date.now()}.jpg`
+      const file = new File([blob], fileName, { type: 'image/jpeg' })
+      const uploadItem = {
+        name: fileName,
+        size: file.size,
+        status: 'ready',
+        percentage: 0,
+        raw: file,
+        url: URL.createObjectURL(blob)
+      }
+      fileList.value = [uploadItem]
+
+      // Persister en localStorage
+      const reader = new FileReader()
+      reader.onload = () => {
+        localStorage.setItem('lastUploadImage', reader.result)
+        localStorage.setItem('lastUploadName', fileName)
+      }
+      reader.readAsDataURL(file)
+
+      ElMessage.success('Photo capturée')
+      closeCamera()
+    }, 'image/jpeg', 0.92)
+  } catch (e) {
+    ElMessage.error('Échec de la capture')
+  }
+}
+
+// Restore last file on refresh
+onMounted(() => {
+  const dataUrl = localStorage.getItem('lastUploadImage')
+  const name = localStorage.getItem('lastUploadName') || 'image.jpg'
+  if (dataUrl && fileList.value.length === 0) {
+    fetch(dataUrl)
+      .then(res => res.blob())
+      .then(blob => {
+        const file = new File([blob], name, { type: blob.type || 'image/jpeg' })
+        const uploadItem = {
+          name,
+          size: file.size,
+          status: 'ready',
+          percentage: 0,
+          raw: file,
+          url: dataUrl
+        }
+        fileList.value = [uploadItem]
+      })
+      .catch(() => {})
+  }
+})
+
+onUnmounted(() => {
+  if (cameraStream.value) {
+    cameraStream.value.getTracks().forEach(t => t.stop())
+  }
+})
 
 const submitUpload = async () => {
   if (fileList.value.length === 0) {
@@ -315,6 +458,20 @@ const resetUpload = () => {
 .upload-actions {
   text-align: center;
   margin: 30px 0;
+}
+
+.camera-wrapper {
+  position: relative;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.camera-video {
+  width: 100%;
+  max-width: 540px;
+  border-radius: 8px;
+  background: #000;
 }
 
 .processing-status {
