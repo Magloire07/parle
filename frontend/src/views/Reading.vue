@@ -87,12 +87,13 @@
             <div class="feedback-grid">
               <el-card class="feedback-card">
                 <h4>Transcription</h4>
-                <p>{{ analysisResult.transcription }}</p>
+                <p v-if="analysisResult.transcription && analysisResult.transcription.length">{{ analysisResult.transcription }}</p>
+                <p v-else class="muted">(Aucune transcription renvoyée)</p>
               </el-card>
               
               <el-card class="feedback-card">
                 <h4>Erreurs Détectées</h4>
-                <ul v-if="analysisResult.errors.length">
+                <ul v-if="analysisResult.errors && analysisResult.errors.length">
                   <li v-for="error in analysisResult.errors" :key="error.word">
                     <el-tag :type="getErrorType(error.severity)">
                       {{ error.word }}
@@ -106,12 +107,18 @@
               <el-card class="feedback-card">
                 <h4>Analyse Prosodique</h4>
                 <div class="prosody-info">
-                  <p><strong>Rythme:</strong> {{ analysisResult.prosody.rhythm.regularity * 100 }}% régulier</p>
-                  <p><strong>Intonation:</strong> {{ analysisResult.prosody.intonation.monotone ? 'Monotone' : 'Variée' }}</p>
-                  <p><strong>Tempo:</strong> {{ analysisResult.prosody.tempo }} BPM</p>
+                  <p><strong>Rythme:</strong> {{ (analysisResult.prosody?.rhythm?.regularity ?? 0) * 100 }}% régulier</p>
+                  <p><strong>Intonation:</strong> {{ analysisResult.prosody?.intonation?.monotone ? 'Monotone' : 'Variée' }}</p>
+                  <p><strong>Tempo:</strong> {{ analysisResult.prosody?.tempo ?? 0 }} BPM</p>
                 </div>
               </el-card>
             </div>
+
+            <el-collapse>
+              <el-collapse-item title="Détails (réponse brute)" name="raw">
+                <pre class="raw-json">{{ rawResponsePretty }}</pre>
+              </el-collapse-item>
+            </el-collapse>
 
             <!-- Model Audio -->
             <div class="model-audio-section">
@@ -187,6 +194,7 @@ const loadingAudio = ref(false)
 const analysisResult = ref(null)
 const audioBlob = ref(null)
 const audioPlayer = ref(null)
+const rawResponse = ref(null)
 
 // Recording state
 const mediaRecorder = ref(null)
@@ -405,11 +413,12 @@ const analyzeRecording = async () => {
     if (expectedText) formData.append('expected_text', expectedText)
 
     const { data } = await speechService.analyzeSpeech(formData)
+    rawResponse.value = data
     analysisResult.value = {
-      transcription: data.transcription || '',
-      confidence: data.confidence ?? 0,
-      errors: data.errors || [],
-      prosody: data.prosody || { rhythm: { regularity: 0 }, intonation: { monotone: false }, tempo: 0 }
+      transcription: data?.transcription || '',
+      confidence: data?.confidence ?? 0,
+      errors: data?.errors || [],
+      prosody: data?.prosody || { rhythm: { regularity: 0 }, intonation: { monotone: false }, tempo: 0 }
     }
     // Build error words set
     errorWords.value = new Set((analysisResult.value.errors || []).map(e => String(e.word || '').toLowerCase()))
@@ -554,6 +563,11 @@ const tokenizeSentence = (sentence) => {
   }
   return parts
 }
+
+// Raw JSON pretty
+const rawResponsePretty = computed(() => {
+  try { return JSON.stringify(rawResponse.value ?? {}, null, 2) } catch { return '{}' }
+})
 </script>
 
 <style scoped>
