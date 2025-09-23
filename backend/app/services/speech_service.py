@@ -82,6 +82,22 @@ class SpeechService:
                 
                 # Détection des erreurs
                 errors = await self._detect_errors(transcription, expected_text, alignment)
+                # Heuristique: si la transcription contient des tokens hors chars lettres (ex "la la la"), forcer des erreurs vs texte attendu
+                if expected_text:
+                    import re
+                    is_noise = len(re.findall(r"[a-zA-ZÀ-ÖØ-öø-ÿ]", transcription)) < 3
+                    if is_noise:
+                        # Marquer la plupart des mots attendus comme manqués
+                        exp_tokens = re.findall(r"[\w'\-]+", expected_text)
+                        errors = [
+                            {
+                                'type': 'deletion',
+                                'word': w,
+                                'expected': w,
+                                'position': i,
+                                'severity': 'high'
+                            } for i, w in enumerate(exp_tokens[: min(5, len(exp_tokens))])
+                        ]
                 
                 # Calcul de la confiance
                 conf_align = await self._calculate_confidence(transcription, expected_text)
@@ -170,48 +186,181 @@ class SpeechService:
             return ""
     
     async def _align_text(self, transcription: str, expected_text: str) -> Dict:
-        """Aligne la transcription avec le texte attendu"""
+        """Aligne la transcription avec le texte attendu avec appariement tolérant.
+
+        - Normalisation insensible aux diacritiques (ex: garcon == garçon)
+        - Retourne pour chaque opération un score de similarité `sim` (0..1)
+        """
         if not expected_text:
             return {}
         
-        import re
-        normalize = lambda s: re.findall(r"[\w'\-]+", s.lower())
-        trans_words = normalize(transcription)
-        expected_words = normalize(expected_text)
+        import re, unicodedata
+
+        def _strip_diacritics(text: str) -> str:
+            nf = unicodedata.normalize('NFD', text)
+            # supprimer les marques combinatoires
+            no_marks = ''.join(ch for ch in nf if unicodedata.category(ch) != 'Mn')
+            return no_marks
+
+        def _normalize_token(tok: str) -> str:
+            # minuscules + enlever diacritiques + garder lettres/chiffres/['-]
+            tok = _strip_diacritics(tok.strip().lower())
+            return re.sub(r"[^\w'\-]", '', tok)
+
+        def normalize_words(s: str) -> List[str]:
+            raw = re.findall(r"[\w'\-]+", s)
+            return [_normalize_token(t) for t in raw if _normalize_token(t)]
+
+        def char_similarity(a: str, b: str) -> float:
+            """Levenshtein normalisé caractère (0..1)."""
+            if a == b:
+                return 1.0
+            n, m = len(a), len(b)
+            if n == 0 or m == 0:
+                return 0.0
+            dp = [[0]*(m+1) for _ in range(n+1)]
+            for i in range(n+1):
+                dp[i][0] = i
+            for j in range(m+1):
+                dp[0][j] = j
+            for i in range(1, n+1):
+                for j in range(1, m+1):
+                    cost = 0 if a[i-1] == b[j-1] else 1
+                    dp[i][j] = min(
+                        dp[i-1][j] + 1,    # del
+                        dp[i][j-1] + 1,    # ins
+                        dp[i-1][j-1] + cost  # sub
+                    )
+            dist = dp[n][m]
+            return max(0.0, 1.0 - dist / max(n, m))
+
+        trans_words = normalize_words(transcription)
+        expected_words = normalize_words(expected_text)
+
+        # Levenshtein alignment with backtrace
+        n, m = len(trans_words), len(expected_words)
+        dp = [[0.0]*(m+1) for _ in range(n+1)]
+        bt = [[None]*(m+1) for _ in range(n+1)]  # backtrace: 'M' approx/sub, 'I' insertion, 'D' deletion
+        # Légère pénalisation des gaps et léger bonus pour match exact
+        INS_COST = 1.0001
+        DEL_COST = 1.0001
+        EPS_MATCH_BONUS = 1e-6
+
+        for i in range(n+1):
+            dp[i][0] = i * DEL_COST
+            if i>0: bt[i][0] = 'D'
+        for j in range(m+1):
+            dp[0][j] = j * INS_COST
+            if j>0: bt[0][j] = 'I'
+
+        for i in range(1, n+1):
+            for j in range(1, m+1):
+                # coût basé sur similarité caractère pour être tolérant
+                sim = char_similarity(trans_words[i-1], expected_words[j-1])
+                cost_sub = 1.0 - sim  # 0 si identique, proche de 0 si très similaire
+                # bonus infinitésimal pour forcer un match exact le plus tôt possible
+                if trans_words[i-1] == expected_words[j-1]:
+                    cost_sub = max(0.0, cost_sub - EPS_MATCH_BONUS)
+                # substitution/approx or match
+                best = dp[i-1][j-1] + cost_sub
+                op = 'M'
+                # deletion (in transcription → missed expected word)
+                if dp[i-1][j] + DEL_COST < best:
+                    best = dp[i-1][j] + DEL_COST
+                    op = 'D'
+                # insertion (extra word in transcription)
+                if dp[i][j-1] + INS_COST < best:
+                    best = dp[i][j-1] + INS_COST
+                    op = 'I'
+                dp[i][j] = best
+                bt[i][j] = op
+
+        # backtrace to build operations
+        i, j = n, m
+        ops: List[Dict[str, Any]] = []
+        while i>0 or j>0:
+            op = bt[i][j]
+            if op == 'M':
+                sim = char_similarity(trans_words[i-1], expected_words[j-1])
+                # on distingue match exact et substitution approximative mais on fournit toujours `sim`
+                ops.append({
+                    'op': 'match' if sim >= 0.9 else 'sub',
+                    'i': i-1,
+                    'j': j-1,
+                    'trans': trans_words[i-1],
+                    'exp': expected_words[j-1],
+                    'sim': round(float(sim), 3)
+                })
+                i -= 1; j -= 1
+            elif op == 'D':
+                ops.append({
+                    'op': 'del',
+                    'i': i-1,
+                    'j': None,
+                    'trans': trans_words[i-1],
+                    'exp': None,
+                    'sim': 0.0
+                })
+                i -= 1
+            elif op == 'I':
+                ops.append({
+                    'op': 'ins',
+                    'i': None,
+                    'j': j-1,
+                    'trans': None,
+                    'exp': expected_words[j-1],
+                    'sim': 0.0
+                })
+                j -= 1
+            else:
+                break
+        ops.reverse()
+
+        # Post-traitement pour ré-ancrer les doublons sur leur première occurrence.
+        # Cas observé: un mot répété (ex: "des") peut être apparié à une occurrence plus tardive
+        # si la fin de la transcription diverge, ce qui rend le surlignage trompeur.
+        # Stratégie minimale (non destructive pour le coût global):
+        #  - repérer les 'ins' (mots attendus manqués)
+        #  - si un 'match/sub' ultérieur a le même mot attendu et une position j plus grande,
+        #    échanger les indices j pour que le match couvre la première occurrence.
+        try:
+            # Construire une map mot -> liste d'indices d'opérations 'ins' (dans l'ordre)
+            insertion_positions = {}
+            for idx, op in enumerate(ops):
+                if op.get('op') == 'ins' and isinstance(op.get('exp'), str):
+                    w = op['exp']
+                    insertion_positions.setdefault(w, []).append(idx)
+            # Parcourir les matches/substitutions et ré-ancrer si possible
+            for idx, op in enumerate(ops):
+                if op.get('op') in ('match', 'sub') and isinstance(op.get('exp'), str) and isinstance(op.get('j'), int):
+                    w = op['exp']
+                    ins_list = insertion_positions.get(w)
+                    if not ins_list:
+                        continue
+                    # Chercher la première insertion antérieure avec j plus petit
+                    for ins_idx in ins_list:
+                        if ins_idx < idx:
+                            ins_op = ops[ins_idx]
+                            j_ins = ins_op.get('j')
+                            j_match = op.get('j')
+                            # Sécurité: les deux j doivent être des int et j_ins < j_match
+                            if isinstance(j_ins, int) and isinstance(j_match, int) and j_ins < j_match:
+                                # Échanger les indices j
+                                ins_op['j'], op['j'] = j_match, j_ins
+                                # Mise à jour: après échange on ne réutilise plus cette insertion
+                                ins_list.remove(ins_idx)
+                                break
+        except Exception:
+            # Ne jamais faire échouer l'alignement si post-process rate
+            pass
 
         alignment: Dict[str, Any] = {
-            "transcribed_words": trans_words,
-            "expected_words": expected_words,
-            "matches": [],
-            "insertions": [],
-            "deletions": []
+            'transcribed_words': trans_words,
+            'expected_words': expected_words,
+            'ops': ops,
+            'edit_distance': dp[n][m],
+            'max_len': max(n, m)
         }
-
-        # Index expected words for quick lookup of positions
-        expected_positions: Dict[str, list] = {}
-        for idx, w in enumerate(expected_words):
-            expected_positions.setdefault(w, []).append(idx)
-
-        trans_positions: Dict[str, list] = {}
-        for idx, w in enumerate(trans_words):
-            trans_positions.setdefault(w, []).append(idx)
-
-        # Matches on exact words present in both
-        common = set(trans_positions.keys()) & set(expected_positions.keys())
-        for w in common:
-            # Pair first occurrences as matches (simple heuristic)
-            alignment["matches"].append((trans_positions[w][0], expected_positions[w][0]))
-
-        # Deletions: expected words not present in transcription
-        for idx, w in enumerate(expected_words):
-            if w not in trans_positions:
-                alignment["deletions"].append((None, idx))
-
-        # Insertions: transcribed words not in expected
-        for idx, w in enumerate(trans_words):
-            if w not in expected_positions:
-                alignment["insertions"].append((idx, None))
-
         return alignment
     
     async def _analyze_prosody(self, audio_path: str) -> Dict:
@@ -250,51 +399,122 @@ class SpeechService:
         }
     
     async def _detect_errors(self, transcription: str, expected_text: str, alignment: Dict) -> List[Dict]:
-        """Détecte les erreurs de prononciation"""
+        """Détecte les erreurs de prononciation en tenant compte de la similarité.
+
+        - Les substitutions très proches (sim >= 0.8) ne sont pas considérées comme des erreurs
+        - Les substitutions proches (0.6 <= sim < 0.8) sont des écarts mineurs (severity: low)
+        - En-dessous, c'est une vraie erreur de prononciation (severity: medium)
+        """
         errors = []
         
         if not expected_text:
             return errors
         
-        import re
-        norm = lambda s: re.findall(r"[\w'\-]+", s)
-        expected_tokens = norm(expected_text)
-        trans_tokens = norm(transcription)
-
-        # Erreurs basées sur l'alignement
-        for i, j in alignment.get("deletions", []):
-            if j is not None and 0 <= j < len(expected_tokens):
+        ops = alignment.get('ops', [])
+        for k, op in enumerate(ops):
+            if op['op'] == 'del':
                 errors.append({
-                    "type": "deletion",
-                    "word": expected_tokens[j],
-                    "position": j,
-                    "severity": "high"
+                    'type': 'substitution_or_skip',
+                    'word': op['trans'],
+                    'expected': None,
+                    'position': op['i'],
+                    'severity': 'medium'
                 })
-        
-        for i, j in alignment.get("insertions", []):
-            if i is not None and 0 <= i < len(trans_tokens):
+            elif op['op'] == 'ins':
                 errors.append({
-                    "type": "insertion",
-                    "word": trans_tokens[i],
-                    "position": i,
-                    "severity": "medium"
+                    'type': 'deletion',
+                    'word': op['exp'],
+                    'expected': op['exp'],
+                    'position': op['j'],
+                    'severity': 'high'
                 })
+            elif op['op'] == 'sub':
+                sim = float(op.get('sim', 0.0))
+                if sim >= 0.8:
+                    # assez proche, ignorer
+                    continue
+                elif sim >= 0.6:
+                    errors.append({
+                        'type': 'near_miss',
+                        'word': op['trans'],
+                        'expected': op['exp'],
+                        'position': op['i'],
+                        'severity': 'low',
+                        'similarity': round(sim, 3)
+                    })
+                else:
+                    errors.append({
+                        'type': 'mispronunciation',
+                        'word': op['trans'],
+                        'expected': op['exp'],
+                        'position': op['i'],
+                        'severity': 'medium',
+                        'similarity': round(sim, 3)
+                    })
         
         return errors
     
     async def _calculate_confidence(self, transcription: str, expected_text: str) -> float:
-        """Calcule la confiance de la transcription"""
+        """Calcule la confiance avec le même alignement tolérant que _align_text.
+
+        Retourne un score 0..1 (1 = parfait)."""
         if not expected_text:
             return 0.0
-        
-        # Calcul simple basé sur la similarité
-        trans_words = set(transcription.lower().split())
-        expected_words = set(expected_text.lower().split())
-        
-        if not expected_words:
+        import re, unicodedata
+
+        def _strip(text: str) -> str:
+            nf = unicodedata.normalize('NFD', text)
+            return ''.join(ch for ch in nf if unicodedata.category(ch) != 'Mn')
+
+        def norm_tokens(s: str) -> List[str]:
+            raw = re.findall(r"[\w'\-]+", s)
+            toks = []
+            for t in raw:
+                t = _strip(t.lower())
+                t = re.sub(r"[^\w'\-]", '', t)
+                if t:
+                    toks.append(t)
+            return toks
+
+        def sim(a: str, b: str) -> float:
+            if a == b:
+                return 1.0
+            n, m = len(a), len(b)
+            if n == 0 or m == 0:
+                return 0.0
+            dp = [[0]*(m+1) for _ in range(n+1)]
+            for i in range(n+1): dp[i][0] = i
+            for j in range(m+1): dp[0][j] = j
+            for i in range(1, n+1):
+                for j in range(1, m+1):
+                    cost = 0 if a[i-1] == b[j-1] else 1
+                    dp[i][j] = min(dp[i-1][j] + 1, dp[i][j-1] + 1, dp[i-1][j-1] + cost)
+            dist = dp[n][m]
+            return max(0.0, 1.0 - dist / max(n, m))
+
+        a = norm_tokens(transcription)
+        b = norm_tokens(expected_text)
+        n, m = len(a), len(b)
+        if max(n, m) == 0:
             return 0.0
-        
-        intersection = len(trans_words.intersection(expected_words))
-        union = len(trans_words.union(expected_words))
-        
-        return intersection / union if union > 0 else 0.0
+
+        # dp tolérant: coût sub = 1 - sim(mot_a, mot_b)
+        dp = [[0.0]*(m+1) for _ in range(n+1)]
+        INS_COST = 1.0001
+        DEL_COST = 1.0001
+        EPS_MATCH_BONUS = 1e-6
+        for i in range(n+1): dp[i][0] = float(i) * DEL_COST
+        for j in range(m+1): dp[0][j] = float(j) * INS_COST
+        for i in range(1, n+1):
+            for j in range(1, m+1):
+                cost_sub = 1.0 - sim(a[i-1], b[j-1])
+                if a[i-1] == b[j-1]:
+                    cost_sub = max(0.0, cost_sub - EPS_MATCH_BONUS)
+                dp[i][j] = min(
+                    dp[i-1][j] + DEL_COST,
+                    dp[i][j-1] + INS_COST,
+                    dp[i-1][j-1] + cost_sub
+                )
+        dist = dp[n][m]
+        # normaliser par max(n, m)
+        return max(0.0, min(1.0, 1.0 - (dist / max(n, m))))

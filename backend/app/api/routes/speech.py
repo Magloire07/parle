@@ -1,7 +1,7 @@
 """
 Routes de traitement de la parole
 """
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form
 from app.services.speech_service import SpeechService
 from app.models.speech import SpeechAnalysisResponse, SpeechAnalysisRequest
 import logging
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 @router.post("/analyze", response_model=SpeechAnalysisResponse)
 async def analyze_speech(
     audio_file: UploadFile = File(...),
-    expected_text: str = None
+    expected_text: str | None = Form(default=None)
 ):
     """
     Analyse un enregistrement vocal et le compare au texte attendu

@@ -26,7 +26,17 @@
             <div class="text-content" :class="{ 'highlighted': isRecording }">
               <p v-for="(sentence, index) in currentText" :key="index" 
                  :class="getSentenceClass(index)">
-                <span v-for="(part, i) in tokenizeSentence(sentence)" :key="i" :class="{ 'word-error': part.isError, 'word': true }">{{ part.text }}</span>
+                <template v-for="(part, i) in tokenizeSentence(sentence, index)" :key="i">
+                  <el-tooltip
+                    v-if="part.tooltip"
+                    effect="dark"
+                    :content="part.tooltip"
+                    placement="top"
+                  >
+                    <span :class="getWordClass(part)">{{ part.text }}</span>
+                  </el-tooltip>
+                  <span v-else :class="getWordClass(part)">{{ part.text }}</span>
+                </template>
               </p>
             </div>
           </div>
@@ -78,8 +88,8 @@
             <el-divider>Résultats de l'Analyse</el-divider>
             
             <el-alert
-              :title="`Confiance: ${analysisResult.confidence}%`"
-              :type="analysisResult.confidence > 80 ? 'success' : 'warning'"
+              :title="`Confiance: ${displayConfidence}%`"
+              :type="displayConfidence >= 70 ? 'success' : 'warning'"
               :closable="false"
               class="confidence-alert"
             />
@@ -89,19 +99,6 @@
                 <h4>Transcription</h4>
                 <p v-if="analysisResult.transcription && analysisResult.transcription.length">{{ analysisResult.transcription }}</p>
                 <p v-else class="muted">(Aucune transcription renvoyée)</p>
-              </el-card>
-              
-              <el-card class="feedback-card">
-                <h4>Erreurs Détectées</h4>
-                <ul v-if="analysisResult.errors && analysisResult.errors.length">
-                  <li v-for="error in analysisResult.errors" :key="error.word">
-                    <el-tag :type="getErrorType(error.severity)">
-                      {{ error.word }}
-                    </el-tag>
-                    - {{ error.type }}
-                  </li>
-                </ul>
-                <p v-else class="success-text">Aucune erreur détectée !</p>
               </el-card>
               
               <el-card class="feedback-card">
@@ -211,6 +208,15 @@ const waveformRef = ref(null)
 
 // Error words cache
 const errorWords = ref(new Set())
+const errorWordMap = ref(new Map()) // normalizedWord -> array of error objects
+const correctWords = ref(new Set()) // mots correctement prononcés
+const pronouncedWords = ref(new Set()) // tous les mots prononcés (pour identifier les non-prononcés)
+const similarWords = ref(new Set()) // mots presque corrects (similarité élevée)
+// Position-aware highlighting structures
+const expectedNormTokens = ref([])      // tokens normalisés du texte attendu
+const sentenceTokenRanges = ref([])     // par phrase: [start, end)
+const tokenStatus = ref([])             // statut par index j: 'correct' | 'similar' | 'error' | 'neutral'
+const tokenTooltip = ref([])            // tooltip par index j
 
 // Computed
 const readingProgress = computed(() => {
@@ -221,6 +227,13 @@ const progressStatus = computed(() => {
   if (isRecording.value) return 'active'
   if (analysisResult.value) return 'success'
   return ''
+})
+
+// Affichage confiance en pourcentage (backend renvoie 0..1)
+const displayConfidence = computed(() => {
+  const c = Number(analysisResult.value?.confidence ?? 0)
+  if (Number.isNaN(c)) return 0
+  return Math.round(Math.max(0, Math.min(1, c)) * 100)
 })
 
 // Methods
@@ -241,6 +254,8 @@ const loadText = () => {
     ]
     totalParagraphs.value = 3
   }
+  // Recompute expected structure for highlighting
+  computeExpectedStructure()
 }
 
 const startRecording = async () => {
@@ -250,14 +265,14 @@ const startRecording = async () => {
     audioBlob.value = null
 
     // Acquire microphone
-    // const stream = await navigator.mediaDevices.getUserMedia({
-    //   audio: {
-    //     echoCancellation: true,
-    //     noiseSuppression: true,
-    //     sampleRate: 44100
-    //   }
-    // })
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        sampleRate: 44100
+      }
+    })
+    //const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
     mediaStream.value = stream
 
@@ -418,10 +433,18 @@ const analyzeRecording = async () => {
       transcription: data?.transcription || '',
       confidence: data?.confidence ?? 0,
       errors: data?.errors || [],
-      prosody: data?.prosody || { rhythm: { regularity: 0 }, intonation: { monotone: false }, tempo: 0 }
+      prosody: data?.prosody || { rhythm: { regularity: 0 }, intonation: { monotone: false }, tempo: 0 },
+      alignment: data?.alignment || {}
     }
-    // Build error words set
-    errorWords.value = new Set((analysisResult.value.errors || []).map(e => String(e.word || '').toLowerCase()))
+    
+    // Utiliser les ops d'alignement comme source de vérité principale
+    buildWordClassificationFromAlignment()
+
+    // Build correct and pronounced words sets
+    updateWordSets()
+
+  // Recompute expected structure after analysis
+  computeExpectedStructure()
 
     // Persist result and audio
     const reader = new FileReader()
@@ -468,21 +491,298 @@ const getSentenceClass = (index) => {
   
   // Simulation de la mise en évidence des erreurs
   const sentence = currentText.value[index] || ''
-  const words = sentence.toLowerCase().split(/\s+/)
-  const hasErr = words.some(w => errorWords.value.has(w.replace(/[^\p{L}\p{N}'-]/gu, '')))
+  const words = sentence.split(/\s+/)
+  const hasErr = words.some(w => {
+    const norm = normalizeToken(w)
+    return errorWords.value.has(norm)
+  })
   return {
-    'error-sentence': hasErr,
-    'correct-sentence': !hasErr
+    'error-sentence': hasErr
   }
 }
 
-const getErrorType = (severity) => {
-  switch (severity) {
-    case 'high': return 'danger'
-    case 'medium': return 'warning'
-    case 'low': return 'info'
-    default: return 'info'
+const updateWordSets = () => {
+  if (!analysisResult.value) return
+
+  const expectedText = currentText.value.join('. ').trim()
+  const transcription = analysisResult.value.transcription || ''
+  
+  // Normaliser les mots du texte attendu
+  const expectedWords = expectedText.split(/\s+/).map(normalizeToken).filter(w => w.length > 0)
+  
+  // Normaliser les mots de la transcription
+  const transcribedWords = transcription.split(/\s+/).map(normalizeToken).filter(w => w.length > 0)
+  
+  // Mots prononcés (dans la transcription)
+  pronouncedWords.value = new Set(transcribedWords)
+  
+  // Si on n'a pas d'alignment ops, utiliser la logique de fallback
+  if (!analysisResult.value.alignment?.ops) {
+    // Logique simplifiée : privilégier les mots corrects
+    const correctSet = new Set()
+    const similarSet = new Set()
+    
+    for (const word of expectedWords) {
+      if (errorWords.value.has(word)) {
+        // Mot explicitement marqué comme erreur → reste rouge
+        continue
+      } else if (pronouncedWords.value.has(word)) {
+        // Mot présent dans la transcription et pas d'erreur → vert
+        correctSet.add(word)
+      } else {
+        // Mot absent, vérifier similarité → jaune potentiel
+        const similarWord = findSimilarWord(word, transcribedWords)
+        if (similarWord) {
+          similarSet.add(word)
+        }
+      }
+    }
+    
+    // Analyser les erreurs pour détecter les mots similaires (jaunes)
+    const errors = analysisResult.value.errors || []
+    for (const error of errors) {
+      if (error.type === 'mispronunciation' && error.word && error.expected) {
+        const expected = String(error.expected).toLowerCase()
+        const pronounced = String(error.word).toLowerCase()
+        const similarity = calculateSimilarity(pronounced, expected)
+        
+        if (similarity >= 0.3 && similarity < 0.9) { 
+          // Similarité moyenne → jaune
+          similarSet.add(expected)
+          // Retirer des erreurs car c'est un effort valable
+          errorWords.value.delete(expected)
+        } else if (similarity >= 0.9) {
+          // Très similaire → considérer comme correct
+          correctSet.add(expected)
+          errorWords.value.delete(expected)
+        }
+        // Si similarity < 0.3, reste rouge (vraie erreur)
+      }
+    }
+    
+    correctWords.value = correctSet
+    similarWords.value = similarSet
   }
+  // Si on a des alignment ops, la classification est déjà faite par buildWordClassificationFromAlignment
+}
+
+// Nouvelle fonction utilisant les ops d'alignement comme source de vérité
+// helpers de normalisation (insensible aux accents)
+const stripDiacritics = (s) => s.normalize('NFD').replace(/\p{M}+/gu, '')
+const normalizeToken = (s) => stripDiacritics(String(s || '').toLowerCase()).replace(/[^\p{L}\p{N}'-]/gu, '')
+
+const buildWordClassificationFromAlignment = () => {
+  if (!analysisResult.value?.alignment?.ops) return
+  
+  const correctSet = new Set()
+  const similarSet = new Set()
+  const errorSet = new Set()
+  const map = new Map()
+  
+  const ops = analysisResult.value.alignment.ops || []
+  const expectedWords = Array.isArray(analysisResult.value.alignment.expected_words)
+    ? analysisResult.value.alignment.expected_words
+    : []
+  tokenStatus.value = Array(expectedWords.length).fill('neutral')
+  tokenTooltip.value = Array(expectedWords.length).fill('')
+  
+  for (const op of ops) {
+    if (op.op === 'match') {
+      // Match parfait → VERT
+      const word = normalizeToken(op.exp)
+      if (word) correctSet.add(word)
+      if (typeof op.j === 'number') tokenStatus.value[op.j] = 'correct'
+    } else if (op.op === 'sub') {
+      // Substitution → vérifier similarité
+      const expected = normalizeToken(op.exp)
+      const pronounced = normalizeToken(op.trans)
+      if (expected && pronounced) {
+        // Utiliser le score renvoyé par le backend si présent
+        const similarity = typeof op.sim === 'number' ? op.sim : calculateSimilarity(pronounced, expected)
+        if (similarity >= 0.85) {
+          // très proche → considérer correct pour ne pas pénaliser les variantes
+          correctSet.add(expected)
+          if (typeof op.j === 'number') tokenStatus.value[op.j] = 'correct'
+        } else if (similarity >= 0.6) {
+          // Similarité élevée → JAUNE
+          similarSet.add(expected)
+          if (!map.has(expected)) map.set(expected, [])
+          map.get(expected).push({
+            type: 'near_miss',
+            word: pronounced,
+            expected,
+            severity: 'low',
+            similarity: Math.round(similarity * 100) / 100
+          })
+          if (typeof op.j === 'number') {
+            tokenStatus.value[op.j] = 'similar'
+            tokenTooltip.value[op.j] = `Presque correct: ${pronounced} → ${expected} (sim=${Math.round(similarity*100)/100})`
+          }
+        } else {
+          // Vraie erreur → ROUGE
+          errorSet.add(expected)
+          if (!map.has(expected)) map.set(expected, [])
+          map.get(expected).push({
+            type: 'mispronunciation',
+            word: pronounced,
+            expected: expected,
+            severity: 'medium'
+          })
+          if (typeof op.j === 'number') {
+            tokenStatus.value[op.j] = 'error'
+            tokenTooltip.value[op.j] = `Mal prononcé: ${pronounced} → ${expected}`
+          }
+        }
+      }
+    } else if (op.op === 'del') {
+      // Deletion (mot dans transcription pas dans attendu) → ignorer pour le surlignage
+    } else if (op.op === 'ins') {
+      // Insertion (mot attendu manqué) → ROUGE
+      const word = normalizeToken(op.exp)
+      if (word) {
+        errorSet.add(word)
+        if (!map.has(word)) map.set(word, [])
+        map.get(word).push({
+          type: 'deletion',
+          expected: word,
+          severity: 'high'
+        })
+        if (typeof op.j === 'number') {
+          tokenStatus.value[op.j] = 'error'
+          tokenTooltip.value[op.j] = `Mot manqué: ${word}`
+        }
+      }
+    }
+  }
+  
+  correctWords.value = correctSet
+  similarWords.value = similarSet  
+  errorWords.value = errorSet
+  errorWordMap.value = map
+}
+
+// Recompute expected tokenization and sentence ranges for position-aware mapping
+const computeExpectedStructure = () => {
+  const ranges = []
+  let cursor = 0
+
+  // If we have alignment expected_words, use them as the single source of truth
+  const alignedExpected = Array.isArray(analysisResult.value?.alignment?.expected_words)
+    ? analysisResult.value.alignment.expected_words.map(normalizeToken).filter(Boolean)
+    : null
+
+  if (alignedExpected && alignedExpected.length > 0) {
+    const total = alignedExpected.length
+    const sentences = currentText.value
+    for (let idx = 0; idx < sentences.length; idx++) {
+      const sentence = sentences[idx]
+      const countInSentence = sentence.split(/\s+/).map(normalizeToken).filter(w => w.length > 0).length
+      // Clamp to remaining tokens if needed
+      const remaining = Math.max(0, total - cursor)
+      const take = idx === sentences.length - 1 ? remaining : Math.min(countInSentence, remaining)
+      const start = cursor
+      const end = start + take
+      ranges.push([start, end])
+      cursor = end
+    }
+    // If there are still tokens unassigned (e.g., punctuation/tokenization differences), extend the last range
+    if (cursor < total && ranges.length > 0) {
+      ranges[ranges.length - 1][1] = total
+      cursor = total
+    }
+    expectedNormTokens.value = alignedExpected
+    sentenceTokenRanges.value = ranges
+    return
+  }
+
+  // Fallback to computing from displayed text when no alignment yet
+  const normTokens = []
+  cursor = 0
+  for (const sentence of currentText.value) {
+    const tokens = sentence.split(/\s+/).map(normalizeToken).filter(w => w.length > 0)
+    const start = cursor
+    const end = start + tokens.length
+    ranges.push([start, end])
+    normTokens.push(...tokens)
+    cursor = end
+  }
+  expectedNormTokens.value = normTokens
+  sentenceTokenRanges.value = ranges
+}
+
+// Fonction de calcul de similarité (distance de Levenshtein normalisée)
+const calculateSimilarity = (word1, word2) => {
+  if (!word1 || !word2) return 0
+  
+  const len1 = word1.length
+  const len2 = word2.length
+  
+  if (len1 === 0) return len2 === 0 ? 1 : 0
+  if (len2 === 0) return 0
+  
+  // Matrice de distance de Levenshtein
+  const matrix = Array(len1 + 1).fill(null).map(() => Array(len2 + 1).fill(null))
+  
+  for (let i = 0; i <= len1; i++) matrix[i][0] = i
+  for (let j = 0; j <= len2; j++) matrix[0][j] = j
+  
+  for (let i = 1; i <= len1; i++) {
+    for (let j = 1; j <= len2; j++) {
+      const cost = word1[i - 1] === word2[j - 1] ? 0 : 1
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,     // deletion
+        matrix[i][j - 1] + 1,     // insertion
+        matrix[i - 1][j - 1] + cost // substitution
+      )
+    }
+  }
+  
+  const distance = matrix[len1][len2]
+  const maxLen = Math.max(len1, len2)
+  
+  return 1 - (distance / maxLen) // Normaliser entre 0 et 1
+}
+
+// Trouver un mot similaire dans la liste des mots transcrits
+const findSimilarWord = (expectedWord, transcribedWords) => {
+  let bestMatch = null
+  let bestSimilarity = 0
+  
+  for (const transcribedWord of transcribedWords) {
+    const similarity = calculateSimilarity(expectedWord, transcribedWord)
+    if (similarity > bestSimilarity && similarity > 0.5) { // Seuil minimum de 50%
+      bestSimilarity = similarity
+      bestMatch = transcribedWord
+    }
+  }
+  
+  return bestMatch
+}
+
+const getWordClass = (part) => {
+  if (!part.text.trim()) return '' // Espaces
+  
+  const normalized = normalizeToken(part.text)
+  if (!normalized) return ''
+  
+  const classes = ['word']
+  
+  if (analysisResult.value && part.status) {
+    if (part.status === 'error') classes.push('word-error')
+    else if (part.status === 'similar') classes.push('word-similar')
+    else if (part.status === 'correct') classes.push('word-correct')
+  } else if (analysisResult.value) {
+    if (errorWords.value.has(normalized)) {
+      classes.push('word-error') // Rouge
+    } else if (similarWords.value.has(normalized)) {
+      classes.push('word-similar') // Jaune
+    } else if (correctWords.value.has(normalized)) {
+      classes.push('word-correct') // Vert
+    }
+    // Sinon, pas de classe spéciale (couleur normale pour non-prononcé)
+  }
+  
+  return classes.join(' ')
 }
 
 const previousParagraph = () => {
@@ -512,6 +812,11 @@ const resetAnalysis = () => {
   analysisResult.value = null
   hasRecording.value = false
   isRecording.value = false
+  errorWords.value.clear()
+  errorWordMap.value.clear()
+  correctWords.value.clear()
+  pronouncedWords.value.clear()
+  similarWords.value.clear()
 }
 
 // Lifecycle
@@ -523,7 +828,26 @@ onMounted(() => {
     const saved = store[currentParagraph.value]
     if (saved) {
       analysisResult.value = saved.analysis
-      errorWords.value = new Set((saved.analysis?.errors || []).map(e => String(e.word || '').toLowerCase()))
+      const errs = saved.analysis?.errors || []
+      // ignorer les quasi-corrects
+      const realErrs = errs.filter(e => !['near_miss'].includes(String(e.type)))
+      errorWords.value = new Set(realErrs.map(e => normalizeToken((e.word ?? e.expected) || '')))
+      const map = new Map()
+      for (const e of realErrs) {
+        const key = normalizeToken((e.word ?? e.expected) || '')
+        if (!key) continue
+        if (!map.has(key)) map.set(key, [])
+        map.get(key).push(e)
+      }
+      errorWordMap.value = map
+      
+      // Reconstruire la classification à partir des ops si présents
+      if (analysisResult.value?.alignment?.ops) {
+        buildWordClassificationFromAlignment()
+      } else {
+        updateWordSets()
+      }
+      
       hasRecording.value = !!saved.audioUrl
       if (audioPlayer.value && saved.audioUrl) {
         audioPlayer.value.src = saved.audioUrl
@@ -550,16 +874,37 @@ const formattedTime = computed(() => {
   return `${m}:${s}`
 })
 
-const tokenizeSentence = (sentence) => {
+const tokenizeSentence = (sentence, sentenceIndex) => {
   const parts = []
   const tokens = sentence.split(/(\s+)/)
+  const range = sentenceTokenRanges.value[sentenceIndex] || [0, 0]
+  let ptr = range[0]
   for (const tok of tokens) {
     if (tok.trim().length === 0) {
-      parts.push({ text: tok, isError: false })
+      parts.push({ text: tok })
       continue
     }
-    const normalized = tok.toLowerCase().replace(/[^\p{L}\p{N}'-]/gu, '')
-    parts.push({ text: tok, isError: errorWords.value.has(normalized) })
+    const normalized = normalizeToken(tok)
+    let status, tooltip = ''
+    if (normalized) {
+      const j = ptr
+      status = tokenStatus.value[j]
+      tooltip = tokenTooltip.value[j] || ''
+      if (ptr < range[1]) ptr += 1
+    }
+    // Fallback tooltip via errorWordMap si pas de tooltip positionnel
+    if (!tooltip && errorWordMap.value.has(normalized)) {
+      const errs = errorWordMap.value.get(normalized) || []
+      const lines = errs.map(e => {
+        if (e.type === 'deletion') return `Mot manqué: ${e.expected || e.word}`
+        if (e.type === 'mispronunciation') return `Mal prononcé: ${e.word} → Attendu: ${e.expected}`
+        if (e.type === 'substitution_or_skip') return `Substitution/écart: ${e.word}`
+        if (e.type === 'near_miss') return `Presque correct: ${e.word} → ${e.expected}`
+        return `${e.type}: ${e.word || ''}`
+      })
+      tooltip = lines.join('\n')
+    }
+    parts.push({ text: tok, status, tooltip })
   }
   return parts
 }
@@ -633,6 +978,34 @@ const rawResponsePretty = computed(() => {
   line-height: 1.8;
   font-size: 1.1rem;
   color: #333;
+}
+
+.word {
+  transition: all 0.3s ease;
+}
+
+.word-error {
+  background-color: #fef0f0;
+  color: #f56c6c;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.word-correct {
+  background-color: #f0f9ff;
+  color: #67c23a;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.word-similar {
+  background-color: #fefce8;
+  color: #eab308;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-weight: 500;
 }
 
 .error-sentence {

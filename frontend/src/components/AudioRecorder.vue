@@ -74,21 +74,6 @@
           <h4>Transcription</h4>
           <p>{{ analysisResult.transcription }}</p>
         </el-card>
-        
-        <el-card class="result-card">
-          <h4>Erreurs Détectées</h4>
-          <div v-if="analysisResult.errors.length">
-            <el-tag 
-              v-for="error in analysisResult.errors" 
-              :key="error.word"
-              :type="getErrorType(error.severity)"
-              class="error-tag"
-            >
-              {{ error.word }}
-            </el-tag>
-          </div>
-          <p v-else class="success-text">Aucune erreur détectée !</p>
-        </el-card>
       </div>
     </div>
   </div>
@@ -263,15 +248,6 @@ const processRecording = async () => {
     ElMessage.error('Erreur lors de l\'analyse')
   } finally {
     isProcessing.value = false
-  }
-}
-
-const getErrorType = (severity) => {
-  switch (severity) {
-    case 'high': return 'danger'
-    case 'medium': return 'warning'
-    case 'low': return 'info'
-    default: return 'info'
   }
 }
 

@@ -22,6 +22,7 @@
             :file-list="fileList"
             :auto-upload="false"
             :on-change="handleFileChange"
+            :on-remove="handleFileRemove"
             accept="image/*;capture=camera"
           >
             <el-icon class="el-icon--upload"><upload-filled /></el-icon>
@@ -230,6 +231,22 @@ const handleFileChange = (file, files) => {
   return true
 }
 
+const handleFileRemove = (file, files) => {
+  // Mettre à jour la liste des fichiers
+  fileList.value = files
+  
+  // Supprimer les données persistées dans localStorage quand un fichier est supprimé
+  localStorage.removeItem('lastUploadImage')
+  localStorage.removeItem('lastUploadName')
+  
+  // Réinitialiser les résultats OCR si ils existent
+  ocrResult.value = null
+  
+  ElMessage.success('Fichier supprimé')
+  
+  return true
+}
+
 const beforeUpload = (file) => {
   const isImage = file.type.startsWith('image/')
   const isLt10M = file.size / 1024 / 1024 < 10
@@ -420,6 +437,10 @@ const resetUpload = () => {
   processing.value = false
   progress.value = 0
   uploadRef.value.clearFiles()
+  
+  // Supprimer les données persistées dans localStorage
+  localStorage.removeItem('lastUploadImage')
+  localStorage.removeItem('lastUploadName')
 }
 </script>
 
