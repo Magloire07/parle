@@ -2,12 +2,22 @@
 Service d'évaluation des résumés
 """
 import logging
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 import tempfile
 import os
 import re
+import json
+import asyncio
+
+try:
+    from openai import OpenAI
+except ImportError:  # openai lib peut ne pas être installé encore
+    OpenAI = None  # type: ignore
 
 logger = logging.getLogger(__name__)
+
+from app.core.config import settings
+
 
 class SummaryService:
     """Service d'évaluation des résumés"""
@@ -18,17 +28,27 @@ class SummaryService:
         self._load_models()
     
     def _load_models(self):
-        """Charge les modèles nécessaires"""
-        try:
-            # Simulation des modèles
+        """Charge les modèles nécessaires (réel ou simulation)."""
+        if settings.USE_SIMULATED_SUMMARY:
             self.whisper_model = "simulated"
             self.summarizer = "simulated"
-            
-            logger.info("Modèles simulés chargés avec succès")
+            logger.info("[Summary] Mode simulation activé")
+            return
+        try:
+            impl = settings.SUMMARY_TRANSCRIBE_IMPL.lower()
+            if impl == "faster-whisper":
+                from faster_whisper import WhisperModel  # type: ignore
+                self.whisper_model = WhisperModel(settings.WHISPER_MODEL, device=settings.WHISPER_DEVICE)
+                logger.info(f"[Summary] faster-whisper modèle '{settings.WHISPER_MODEL}' chargé")
+            else:
+                import whisper  # type: ignore
+                self.whisper_model = whisper.load_model(settings.WHISPER_MODEL)
+                logger.info(f"[Summary] openai-whisper modèle '{settings.WHISPER_MODEL}' chargé")
+            self.summarizer = None  # Placeholder si un modèle de résumé distinct est ajouté plus tard
         except Exception as e:
-            logger.error(f"Erreur chargement modèles: {str(e)}")
-            self.whisper_model = None
-            self.summarizer = None
+            logger.error(f"Erreur chargement modèles (fallback simulation): {e}")
+            self.whisper_model = "simulated"
+            self.summarizer = "simulated"
     
     async def evaluate_summary(self, audio_content: bytes, source_text: str) -> Dict:
         """
@@ -36,13 +56,26 @@ class SummaryService:
         """
         try:
             # Sauvegarde temporaire du fichier audio
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
+            with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as temp_file:
                 temp_file.write(audio_content)
                 temp_path = temp_file.name
+            working_path = temp_path
+            # Conversion si non simulation & ffmpeg disponible
+            if self.whisper_model != "simulated":
+                try:
+                    import shutil, subprocess
+                    ffmpeg_bin = shutil.which("ffmpeg")
+                    if ffmpeg_bin:
+                        wav_path = temp_path + ".wav"
+                        cmd = [ffmpeg_bin, "-y", "-i", temp_path, "-ar", "16000", "-ac", "1", wav_path]
+                        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+                        working_path = wav_path
+                except Exception as ce:
+                    logger.warning(f"Conversion ffmpeg échouée (fallback fichier brut): {ce}")
             
             try:
                 # Transcription du résumé
-                transcription = await self._transcribe_summary(temp_path)
+                transcription = await self._transcribe_summary(working_path)
                 
                 # Analyse de la pertinence
                 relevance_score = await self._analyze_relevance(transcription, source_text)
@@ -69,8 +102,12 @@ class SummaryService:
                 }
                 
             finally:
-                if os.path.exists(temp_path):
-                    os.unlink(temp_path)
+                for p in {temp_path, working_path}:
+                    if p and os.path.exists(p):
+                        try:
+                            os.unlink(p)
+                        except OSError:
+                            pass
                     
         except Exception as e:
             logger.error(f"Erreur évaluation résumé: {str(e)}")
@@ -110,16 +147,25 @@ class SummaryService:
             }
     
     async def _transcribe_summary(self, audio_path: str) -> str:
-        """Transcrit le résumé audio"""
-        if not self.whisper_model:
-            raise Exception("Modèle Whisper non chargé")
-        
-        try:
-            # Simulation de la transcription
+        """Transcrit le résumé audio (réel si modèle chargé, sinon simulation)."""
+        if self.whisper_model == "simulated":
             return "Résumé simulé du texte audio"
+        try:
+            if settings.SUMMARY_TRANSCRIBE_IMPL.lower() == "faster-whisper":
+                # streaming segments
+                segments, info = self.whisper_model.transcribe(audio_path, beam_size=1)
+                text_parts = []
+                for seg in segments:
+                    text_parts.append(seg.text.strip())
+                transcript = " ".join(text_parts).strip()
+                return transcript or "(Transcription vide)"
+            else:
+                # openai-whisper
+                result = self.whisper_model.transcribe(audio_path)
+                return result.get("text", "").strip() or "(Transcription vide)"
         except Exception as e:
-            logger.error(f"Erreur transcription résumé: {str(e)}")
-            raise
+            logger.error(f"Erreur transcription résumé: {e}")
+            return "(Erreur transcription)"
     
     async def _analyze_relevance(self, summary: str, source_text: str) -> float:
         """Analyse la pertinence du résumé"""
@@ -336,3 +382,136 @@ class SummaryService:
         ]
         
         return transitions
+
+    # ====== LLM (GPT/OpenAI) Évaluation Avancée ======
+    async def llm_evaluate_summary(self, summary_text: str, source_text: str, api_key: Optional[str]) -> Dict[str, Any]:
+        """Évalue un résumé texte avec un LLM (OpenAI) si disponible, sinon heuristique fallback.
+
+        Retourne un dict aligné avec SummaryEvaluationResponse.
+        """
+        # Fallback heuristique si pas de clé ou lib absente
+        if not api_key or OpenAI is None:
+            relevance = await self._analyze_relevance(summary_text, source_text)
+            quality = await self._analyze_quality(summary_text)
+            suggestions = await self._generate_suggestions(summary_text, source_text)
+            errors = await self._detect_summary_errors(summary_text)
+            transitions = await self._analyze_transitions(summary_text)
+            return {
+                "transcription": summary_text,
+                "relevance_score": relevance,
+                "quality_score": quality,
+                "suggestions": suggestions,
+                "errors": errors,
+                "transitions": transitions,
+                "_llm": False
+            }
+
+        prompt_system = (
+            "Tu es un évaluateur pédagogique francophone. Tu reçois un TEXTE SOURCE et un RESUME (résumé oral transcrit). "
+            "Tu dois retourner UNE SEULE STRUCTURE JSON STRICTE avec les champs: \n"
+            "relevance_score (float 0-1), quality_score (float 0-1), suggestions (liste de chaînes), transitions (liste de chaînes), "
+            "errors (liste d'objets {type, word, severity}), transcription (copie exacte du résumé). "
+            "Relevance: couverture des points clés sans ajout erroné. Quality: clarté, structure (intro, développement, conclusion), fluidité, utilisation de connecteurs. "
+            "Donne 3-6 suggestions actionnables. transitions: connecteurs utiles supplémentaires (max 8). errors: détecte répétitions excessives, prononciation potentielle (type=prononciation), phrases incomplètes (type=incomplete_sentence). severity in [low, medium, high]. "
+            "Répond UNIQUEMENT par du JSON valide."
+        )
+        user_payload = {
+            "source_text": source_text[:8000],  # limiter taille
+            "summary": summary_text[:4000]
+        }
+        prompt_user = (
+            "TEXTE SOURCE:\n" + user_payload["source_text"] + "\n\nRESUME:\n" + user_payload["summary"] + "\n\nProduis le JSON maintenant."
+        )
+
+        client = OpenAI(api_key=api_key)
+        # Utilise un thread pour ne pas bloquer l'event loop si le SDK n'est pas async
+        try:
+            response = await asyncio.to_thread(
+                lambda: client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": prompt_system},
+                        {"role": "user", "content": prompt_user}
+                    ],
+                    temperature=0.2,
+                    max_tokens=800
+                )
+            )
+            content = response.choices[0].message.content if response and response.choices else ""
+        except Exception as e:
+            logger.error(f"Erreur appel OpenAI: {e}")
+            # Fallback heuristique
+            relevance = await self._analyze_relevance(summary_text, source_text)
+            quality = await self._analyze_quality(summary_text)
+            suggestions = await self._generate_suggestions(summary_text, source_text)
+            errors = await self._detect_summary_errors(summary_text)
+            transitions = await self._analyze_transitions(summary_text)
+            return {
+                "transcription": summary_text,
+                "relevance_score": relevance,
+                "quality_score": quality,
+                "suggestions": suggestions + ["(Fallback LLM)"] if suggestions else ["(Fallback LLM)"] ,
+                "errors": errors,
+                "transitions": transitions,
+                "_llm": False,
+                "_error": str(e)
+            }
+
+        parsed = None
+        if content:
+            # Extraction robuste du JSON
+            try:
+                json_str = content.strip()
+                # Supprime markdown fences si présents
+                if json_str.startswith("```"):
+                    json_str = re.sub(r'^```(json)?', '', json_str).strip()
+                    if json_str.endswith('```'):
+                        json_str = json_str[:-3].strip()
+                parsed = json.loads(json_str)
+            except Exception as e:
+                logger.error(f"Parsing JSON LLM échoué: {e} | content tronqué: {content[:120]}")
+
+        # Heuristiques + fusion
+        relevance = self._safe_float(parsed, 'relevance_score') if parsed else None
+        quality = self._safe_float(parsed, 'quality_score') if parsed else None
+        suggestions = self._safe_list(parsed, 'suggestions') if parsed else []
+        transitions = self._safe_list(parsed, 'transitions') if parsed else []
+        errors = self._safe_list(parsed, 'errors') if parsed else []
+
+        # Compléter avec heuristique si valeurs manquantes
+        if relevance is None:
+            relevance = await self._analyze_relevance(summary_text, source_text)
+        if quality is None:
+            quality = await self._analyze_quality(summary_text)
+        if not transitions:
+            transitions = await self._analyze_transitions(summary_text)
+        if not errors:
+            errors = await self._detect_summary_errors(summary_text)
+        if not suggestions:
+            suggestions = await self._generate_suggestions(summary_text, source_text)
+
+        return {
+            "transcription": summary_text,
+            "relevance_score": max(0.0, min(1.0, relevance)),
+            "quality_score": max(0.0, min(1.0, quality)),
+            "suggestions": suggestions,
+            "errors": errors,
+            "transitions": transitions,
+            "_llm": True,
+            "_raw": content[:5000] if content else None
+        }
+
+    # Utils parsing JSON LLM
+    def _safe_float(self, obj: Optional[dict], key: str) -> Optional[float]:
+        try:
+            if obj is None or key not in obj:
+                return None
+            return float(obj[key])
+        except Exception:
+            return None
+
+    def _safe_list(self, obj: Optional[dict], key: str) -> List[Any]:
+        if not obj or key not in obj:
+            return []
+        val = obj.get(key)
+        return val if isinstance(val, list) else []

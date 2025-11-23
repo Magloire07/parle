@@ -1,12 +1,13 @@
-Détails (réponse brute)
 {
   "success": true,
-  "transcription": "Nous avons également",
+  "transcription": "Nous avons également des filles.",
   "alignment": {
     "transcribed_words": [
       "nous",
       "avons",
-      "egalement"
+      "egalement",
+      "des",
+      "filles"
     ],
     "expected_words": [
       "nous",
@@ -52,28 +53,28 @@ Détails (réponse brute)
         "sim": 1
       },
       {
-        "op": "ins",
-        "i": null,
+        "op": "match",
+        "i": 2,
         "j": 2,
-        "trans": null,
+        "trans": "egalement",
         "exp": "egalement",
-        "sim": 0
+        "sim": 1
       },
       {
-        "op": "ins",
-        "i": null,
+        "op": "match",
+        "i": 3,
         "j": 3,
-        "trans": null,
+        "trans": "des",
         "exp": "des",
-        "sim": 0
+        "sim": 1
       },
       {
-        "op": "ins",
-        "i": null,
+        "op": "match",
+        "i": 4,
         "j": 4,
-        "trans": null,
+        "trans": "filles",
         "exp": "filles",
-        "sim": 0
+        "sim": 1
       },
       {
         "op": "ins",
@@ -220,39 +221,18 @@ Détails (réponse brute)
         "sim": 0
       },
       {
-        "op": "match",
-        "i": 2,
+        "op": "ins",
+        "i": null,
         "j": 23,
-        "trans": "egalement",
+        "trans": null,
         "exp": "egalement",
-        "sim": 1
+        "sim": 0
       }
     ],
-    "edit_distance": 21,
+    "edit_distance": 19.0019,
     "max_len": 24
   },
   "errors": [
-    {
-      "type": "deletion",
-      "word": "egalement",
-      "expected": "egalement",
-      "position": 2,
-      "severity": "high"
-    },
-    {
-      "type": "deletion",
-      "word": "des",
-      "expected": "des",
-      "position": 3,
-      "severity": "high"
-    },
-    {
-      "type": "deletion",
-      "word": "filles",
-      "expected": "filles",
-      "position": 4,
-      "severity": "high"
-    },
     {
       "type": "deletion",
       "word": "et",
@@ -378,6 +358,13 @@ Détails (réponse brute)
       "expected": "magasins",
       "position": 22,
       "severity": "high"
+    },
+    {
+      "type": "deletion",
+      "word": "egalement",
+      "expected": "egalement",
+      "position": 23,
+      "severity": "high"
     }
   ],
   "prosody": {
@@ -388,7 +375,7 @@ Détails (réponse brute)
       130,
       115
     ],
-    "tempo": 200,
+    "tempo": 195.1219512195122,
     "pauses": [
       {
         "start": 0.5,
@@ -407,5 +394,5 @@ Détails (réponse brute)
       "beat_count": 10
     }
   },
-  "confidence": 0.39
+  "confidence": 0.45
 }

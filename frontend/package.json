@@ -1,32 +1,39 @@
 {
   "name": "parle-frontend",
   "version": "1.0.0",
-  "description": "Frontend Vue.js pour l'application Parle",
+  "description": "Frontend Vue.js pour la plateforme Parle",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview",
+    "preview": "vite preview --port 3000",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix --ignore-path .gitignore",
     "format": "prettier --write ."
   },
   "dependencies": {
-    "vue": "^3.3.8",
-    "vue-router": "^4.2.5",
+    "vue": "^3.4.0",
+    "vue-router": "^4.3.0",
     "pinia": "^2.1.7",
     "axios": "^1.6.2",
-    "element-plus": "^2.4.4",
-    "@element-plus/icons-vue": "^2.1.0",
-    "wavesurfer.js": "^7.3.0",
-    "recordrtc": "^5.6.2",
-    "html5-qrcode": "^2.3.8"
+    "@headlessui/vue": "^1.7.17",
+    "@heroicons/vue": "^2.1.1",
+    "chart.js": "^4.4.1",
+    "vue-chartjs": "^5.3.0",
+    "v-calendar": "^3.1.2",
+    "@tiptap/vue-3": "^2.2.0",
+    "@tiptap/starter-kit": "^2.2.0",
+    "date-fns": "^3.0.6",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^4.5.0",
-    "vite": "^5.0.0",
-    "eslint": "^8.54.0",
-    "eslint-plugin-vue": "^9.18.1",
-    "prettier": "^3.1.0",
-    "typescript": "^5.2.2",
-    "@types/node": "^20.9.0"
+    "@vitejs/plugin-vue": "^5.0.0",
+    "vite": "^5.1.0",
+    "eslint": "^8.57.0",
+    "eslint-plugin-vue": "^9.20.0",
+    "prettier": "^3.2.0",
+    "typescript": "^5.3.3",
+    "@types/node": "^20.11.0",
+    "autoprefixer": "^10.4.17",
+    "postcss": "^8.4.33",
+    "tailwindcss": "^3.4.1"
   }
 }

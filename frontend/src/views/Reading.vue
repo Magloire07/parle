@@ -1,7 +1,7 @@
 <template>
-  <div class="reading">
-    <el-row :gutter="20" justify="center">
-      <el-col :span="24" :md="20" :lg="16">
+  <div class="reading two-pane">
+    <el-row :gutter="20" justify="start">
+      <el-col :span="24" :md="14" :lg="14">
         <el-card class="reading-card" shadow="hover">
           <template #header>
             <div class="card-header">
@@ -158,6 +158,75 @@
           </div>
         </el-card>
       </el-col>
+      <!-- Summary Panel -->
+      <el-col :span="24" :md="10" :lg="10">
+        <el-card class="summary-card" shadow="hover">
+          <template #header>
+            <div class="card-header">
+              <h3>Mode Résumé (Oral)</h3>
+              <p>Enregistrez votre résumé des paragraphes lus puis évaluez-le.</p>
+            </div>
+          </template>
+          <div class="summary-source-text">
+            <el-input
+              type="textarea"
+              :rows="5"
+              v-model="summarySourceText"
+              placeholder="Texte source (pré-rempli avec les paragraphes courants)"
+            />
+          </div>
+          <div class="summary-recording-section">
+            <div v-if="isSummaryRecording" class="recording-status small">
+              <span class="timer">{{ summaryFormattedTime }}</span>
+              <div class="vu-meter">
+                <div class="vu-fill" :style="{ width: summaryVuLevel + '%' }"></div>
+              </div>
+            </div>
+            <el-button v-if="!isSummaryRecording" type="primary" size="default" @click="startSummaryRecording">
+              <el-icon><Microphone /></el-icon>
+              Enregistrer Résumé
+            </el-button>
+            <el-button v-if="isSummaryRecording" type="danger" size="default" @click="stopSummaryRecording">
+              <el-icon><VideoPause /></el-icon>
+              Stop
+            </el-button>
+            <el-button v-if="hasSummaryRecording && !summaryAnalyzing" type="success" size="default" @click="evaluateSummary">
+              <el-icon><Search /></el-icon>
+              Évaluer
+            </el-button>
+            <el-button v-if="summaryResult && !summaryAnalyzing" type="warning" size="default" @click="llmEvaluateSummary">
+              GPT / LLM
+            </el-button>
+            <el-button v-if="summaryAnalyzing" :loading="true" type="info">Analyse…</el-button>
+          </div>
+          <div v-if="summaryResult" class="summary-results">
+            <el-divider>Résultats Résumé</el-divider>
+            <el-alert
+              :title="`Pertinence: ${(summaryResult.relevance_score*100).toFixed(0)}% | Qualité: ${(summaryResult.quality_score*100).toFixed(0)}%`"
+              type="info"
+              :closable="false"
+              class="mb-2"
+            />
+            <p><strong>Transcription:</strong> {{ summaryResult.transcription }}</p>
+            <div v-if="summaryResult.suggestions?.length">
+              <h4>Suggestions</h4>
+              <ul>
+                <li v-for="(s,i) in summaryResult.suggestions" :key="i">{{ s }}</li>
+              </ul>
+            </div>
+            <div v-if="summaryResult.transitions?.length">
+              <h4>Transitions détectées</h4>
+              <el-tag v-for="(t,i) in summaryResult.transitions" :key="i" class="mr-1 mb-1">{{ t }}</el-tag>
+            </div>
+            <div v-if="summaryResult.errors?.length">
+              <h4>Erreurs</h4>
+              <ul>
+                <li v-for="(e,i) in summaryResult.errors" :key="i">{{ e.type }} - {{ e.word || e.sentence || '' }} ({{ e.severity || e.count || '' }})</li>
+              </ul>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
     </el-row>
   </div>
 </template>
@@ -175,7 +244,7 @@ import {
   ArrowRight, 
   Document 
 } from '@element-plus/icons-vue'
-import { speechService } from '@/services/api'
+import { speechService, ttsService, summaryService } from '@/services/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -192,6 +261,20 @@ const analysisResult = ref(null)
 const audioBlob = ref(null)
 const audioPlayer = ref(null)
 const rawResponse = ref(null)
+
+// Summary panel state
+const summarySourceText = ref('')
+const isSummaryRecording = ref(false)
+const hasSummaryRecording = ref(false)
+const summaryAnalyzing = ref(false)
+const summaryAudioBlob = ref(null)
+const summaryMediaRecorder = ref(null)
+const summaryChunks = ref([])
+const summarySeconds = ref(0)
+let summaryTimer = null
+const summaryVuLevel = ref(0)
+const summaryStream = ref(null)
+const summaryResult = ref(null)
 
 // Recording state
 const mediaRecorder = ref(null)
@@ -231,6 +314,12 @@ const progressStatus = computed(() => {
 
 // Affichage confiance en pourcentage (backend renvoie 0..1)
 const displayConfidence = computed(() => {
+// Summary formatted time
+const summaryFormattedTime = computed(() => {
+  const m = String(Math.floor(summarySeconds.value / 60)).padStart(2, '0')
+  const s = String(summarySeconds.value % 60).padStart(2, '0')
+  return `${m}:${s}`
+})
   const c = Number(analysisResult.value?.confidence ?? 0)
   if (Number.isNaN(c)) return 0
   return Math.round(Math.max(0, Math.min(1, c)) * 100)
@@ -256,6 +345,8 @@ const loadText = () => {
   }
   // Recompute expected structure for highlighting
   computeExpectedStructure()
+  // Pré-remplir la zone source pour le résumé avec le paragraphe courant (ou combiner plusieurs)
+  summarySourceText.value = currentText.value.join('. ').trim()
 }
 
 const startRecording = async () => {
@@ -468,21 +559,137 @@ const analyzeRecording = async () => {
 }
 
 const playModelAudio = async () => {
+  if (!currentText.value.length) {
+    ElMessage.warning('Aucun texte à synthétiser')
+    return
+  }
   try {
     loadingAudio.value = true
-    
-    // Simulation de la génération audio
-    ElMessage.info('Génération du modèle audio...')
-    
-    // Ici, vous intégreriez l'API TTS
-    setTimeout(() => {
+    const text = currentText.value.join('. ').trim()
+    if (!text) {
+      ElMessage.warning('Texte vide')
       loadingAudio.value = false
-      ElMessage.success('Modèle audio prêt')
-    }, 1500)
-    
-  } catch (error) {
-    ElMessage.error('Erreur lors de la génération audio')
+      return
+    }
+    ElMessage.info('Génération audio…')
+    const lang = analysisResult.value?.prosody?.language || 'fr'
+    const { data } = await ttsService.generateSpeech(text, lang, false)
+    const url = data?.audio_url
+    if (!url) {
+      throw new Error('URL audio manquante dans la réponse')
+    }
+    // Utiliser le même proxy /api si nécessaire
+    const finalUrl = url.startsWith('http') ? url : `/api${url}`
+    if (audioPlayer.value) {
+      audioPlayer.value.src = finalUrl
+      await audioPlayer.value.play().catch(() => { /* autoplay blocked */ })
+    }
     loadingAudio.value = false
+    ElMessage.success('Lecture du modèle prête')
+  } catch (error) {
+    console.error(error)
+    ElMessage.error("Échec génération TTS")
+    loadingAudio.value = false
+  }
+}
+
+// --- Summary Recording Logic ---
+const startSummaryRecording = async () => {
+  try {
+    summaryResult.value = null
+    hasSummaryRecording.value = false
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    summaryStream.value = stream
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm'
+    summaryMediaRecorder.value = new MediaRecorder(stream, { mimeType })
+    summaryChunks.value = []
+    summaryMediaRecorder.value.ondataavailable = e => { if (e.data && e.data.size) summaryChunks.value.push(e.data) }
+    summaryMediaRecorder.value.onstop = () => {
+      const blob = new Blob(summaryChunks.value, { type: mimeType })
+      summaryAudioBlob.value = blob
+      hasSummaryRecording.value = true
+    }
+    summaryMediaRecorder.value.start()
+    isSummaryRecording.value = true
+    summarySeconds.value = 0
+    if (summaryTimer) clearInterval(summaryTimer)
+    summaryTimer = setInterval(() => { summarySeconds.value += 1 }, 1000)
+    // Simple VU (best-effort)
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+      const src = audioCtx.createMediaStreamSource(stream)
+      const analyser = audioCtx.createAnalyser()
+      analyser.fftSize = 512
+      src.connect(analyser)
+      const data = new Uint8Array(analyser.fftSize)
+      const loop = () => {
+        if (!isSummaryRecording.value) return
+        analyser.getByteTimeDomainData(data)
+        let sum = 0
+        for (let i=0;i<data.length;i++) { const v=(data[i]-128)/128; sum+=v*v }
+        const rms = Math.sqrt(sum/data.length)
+        summaryVuLevel.value = Math.min(100, Math.round(rms*140))
+        requestAnimationFrame(loop)
+      }
+      loop()
+    } catch(_){}
+  } catch (e) {
+    ElMessage.error('Micro indisponible (résumé)')
+  }
+}
+
+const stopSummaryRecording = () => {
+  if (!summaryMediaRecorder.value || !isSummaryRecording.value) return
+  try {
+    isSummaryRecording.value = false
+    const p = new Promise(res => {
+      const h = () => { summaryMediaRecorder.value.removeEventListener('stop', h); res() }
+      summaryMediaRecorder.value.addEventListener('stop', h)
+    })
+    summaryMediaRecorder.value.stop()
+    if (summaryStream.value) {
+      summaryStream.value.getTracks().forEach(t=>t.stop())
+      summaryStream.value = null
+    }
+    if (summaryTimer) { clearInterval(summaryTimer); summaryTimer = null }
+    return p
+  } catch { /* noop */ }
+}
+
+const evaluateSummary = async () => {
+  if (!summaryAudioBlob.value) { ElMessage.warning('Aucun enregistrement de résumé'); return }
+  try {
+    summaryAnalyzing.value = true
+    const form = new FormData()
+    form.append('audio_file', summaryAudioBlob.value, 'summary.webm')
+    form.append('source_text', summarySourceText.value || '')
+    const { data } = await summaryService.evaluateSummary(form)
+    summaryResult.value = data
+    ElMessage.success('Résumé évalué')
+  } catch (e) {
+    console.error(e)
+    ElMessage.error('Erreur évaluation résumé')
+  } finally {
+    summaryAnalyzing.value = false
+  }
+}
+
+const llmEvaluateSummary = async () => {
+  try {
+    summaryAnalyzing.value = true
+    const text = summaryResult.value?.transcription || summarySourceText.value
+    const { data } = await summaryService.llmEvaluateSummary(text)
+    // Fusionner suggestions / transitions si différent
+    summaryResult.value = {
+      ...data,
+      transcription: data.transcription || text
+    }
+    ElMessage.success('Analyse LLM terminée')
+  } catch (e) {
+    console.error(e)
+    ElMessage.error('Erreur LLM')
+  } finally {
+    summaryAnalyzing.value = false
   }
 }
 
@@ -864,6 +1071,9 @@ onUnmounted(() => {
   } catch (_) {}
   if (mediaStream.value) {
     mediaStream.value.getTracks().forEach(t => t.stop())
+  }
+  if (summaryStream.value) {
+    summaryStream.value.getTracks().forEach(t => t.stop())
   }
 })
 

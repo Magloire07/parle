@@ -1,18 +1,23 @@
 """
 Application principale FastAPI pour Parle
+Plateforme d'apprentissage linguistique (Anglais/Français)
 """
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import uvicorn
+from pathlib import Path
 
 from app.core.config import settings
-from app.api.routes import ocr, speech, tts, summary, health
+from app.core.database import engine, Base
+from app.api.routes import auth, flashcards, recordings, journal, schedule, progress
+
+# Créer les tables
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Parle API",
-    description="API pour l'application d'entraînement à l'oral Parle",
-    version="1.0.0",
+    description="API pour la plateforme d'apprentissage linguistique Parle",
+    version=settings.VERSION,
     docs_url="/docs",
     redoc_url="/redoc"
 )
@@ -20,21 +25,61 @@ app = FastAPI(
 # Configuration CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS.split(","),
+    allow_origins=settings.CORS_ORIGINS.split(","),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Montage des routes statiques pour les fichiers audio
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# Montage des fichiers statiques (audio)
+audio_dir = Path("audio") if settings.DEBUG else Path(settings.AUDIO_DIR)
+audio_dir.mkdir(exist_ok=True)
+app.mount("/audio", StaticFiles(directory=str(audio_dir)), name="audio")
 
 # Inclusion des routes
-app.include_router(health.router, prefix="/health", tags=["health"])
-app.include_router(ocr.router, prefix="/ocr", tags=["ocr"])
-app.include_router(speech.router, prefix="/speech", tags=["speech"])
-app.include_router(tts.router, prefix="/tts", tags=["tts"])
-app.include_router(summary.router, prefix="/summary", tags=["summary"])
+app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+app.include_router(flashcards.router, prefix="/flashcards", tags=["Flashcards"])
+app.include_router(recordings.router, prefix="/recordings", tags=["Recordings"])
+app.include_router(journal.router, prefix="/journal", tags=["Journal"])
+app.include_router(schedule.router, prefix="/schedule", tags=["Schedule"])
+app.include_router(progress.router, prefix="/progress", tags=["Progress"])
+
+@app.get("/")
+async def root():
+    """Point d'entrée de l'API"""
+    return {
+        "app": settings.APP_NAME,
+        "version": settings.VERSION,
+        "docs": "/docs"
+    }
+
+@app.get("/health")
+async def health_check():
+    """Vérification de l'état de l'application"""
+    return {"status": "healthy"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "app.main:app",
+        host=settings.HOST,
+        port=settings.PORT,
+        reload=settings.DEBUG
+    )
+
+        if not key:
+            return "(empty)"
+        if len(key) < 12:
+            return key[:3] + "***" + key[-2:]
+        return key[:6] + "***" + key[-4:]
+    logger.info(
+        "Summary Config -> simulated=%s impl=%s whisper_model=%s device=%s GPT_KEY=%s",
+        settings.USE_SIMULATED_SUMMARY,
+        getattr(settings, 'SUMMARY_TRANSCRIBE_IMPL', 'n/a'),
+        settings.WHISPER_MODEL,
+        settings.WHISPER_DEVICE,
+        mask(settings.GPT_API_KEY)
+    )
 
 @app.get("/")
 async def root():

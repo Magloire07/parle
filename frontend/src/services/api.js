@@ -106,6 +106,20 @@ export const summaryService = {
     return api.post('/summary/generate', {
       source_text: sourceText
     })
+  },
+
+  llmEvaluateSummary: (summaryText) => {
+    // Endpoint LLM (fallback interne si pas de clé backend)
+    return api.post('/summary/llm/evaluate', {
+      source_text: summaryText
+    })
+  },
+
+  llmFullEvaluate: (sourceText, summaryText) => {
+    return api.post('/summary/llm/full', {
+      source_text: sourceText,
+      summary_text: summaryText
+    })
   }
 }
 

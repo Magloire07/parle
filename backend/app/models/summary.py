@@ -8,6 +8,11 @@ class SummaryEvaluationRequest(BaseModel):
     """Requête pour l'évaluation de résumé"""
     source_text: str
 
+class LLMEvaluationRequest(BaseModel):
+    """Requête d'évaluation LLM détaillée (sépare texte source et résumé)."""
+    source_text: str
+    summary_text: str
+
 class SummaryEvaluationResponse(BaseModel):
     """Réponse de l'endpoint d'évaluation de résumé"""
     success: bool

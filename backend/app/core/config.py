@@ -1,9 +1,14 @@
-"""
-Configuration de l'application
-"""
+"""Configuration de l'application Parle"""
 from pydantic_settings import BaseSettings
 from typing import List
 import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Chargement du fichier .env
+env_path = Path(__file__).parent.parent.parent / ".env"
+if env_path.exists():
+    load_dotenv(env_path)
 
 class Settings(BaseSettings):
     """Configuration de l'application"""
@@ -13,45 +18,41 @@ class Settings(BaseSettings):
     VERSION: str = "1.0.0"
     DEBUG: bool = False
     
+    # Server
+    HOST: str = "0.0.0.0"
+    PORT: int = 8000
+    
     # CORS
-    ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:8080"
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,https://localhost"
     
     # Database
-    DATABASE_URL: str = "postgresql://user:password@localhost:5432/parle"
+    DATABASE_URL: str = "postgresql://parle_user:parle_password@localhost:5432/parle"
     
     # JWT
-    SECRET_KEY: str = "your-secret-key-here"
+    SECRET_KEY: str = "your-secret-key-change-this-in-production-min-32-characters"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     
-    # File upload
-    MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
-    UPLOAD_DIR: str = "uploads"
-    STATIC_DIR: str = "static"
-    
-    # OCR
-    TESSERACT_CMD: str = "/usr/bin/tesseract"
-    TESSERACT_LANG: str = "fra+eng"
-    
-    # Whisper
-    WHISPER_MODEL: str = "base"
-    WHISPER_DEVICE: str = "cpu"
-    
-    # TTS
-    TTS_LANG: str = "fr"
-    TTS_SLOW: bool = False
-    
-    # AI Models
-    AI_MODEL: str = "microsoft/DialoGPT-medium"
-    AI_MAX_LENGTH: int = 1000
+    # File storage
+    UPLOAD_DIR: str = "/var/www/parle/uploads"
+    AUDIO_DIR: str = "/var/www/parle/audio"
+    MAX_UPLOAD_SIZE: int = 10 * 1024 * 1024  # 10MB
     
     class Config:
         env_file = ".env"
         case_sensitive = True
 
-# Instance globale des paramètres
+# Instance globale
 settings = Settings()
 
-# Création des répertoires nécessaires
-os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-os.makedirs(settings.STATIC_DIR, exist_ok=True)
+# Création des répertoires locaux en dev
+if settings.DEBUG:
+    upload_dir = Path("uploads")
+    audio_dir = Path("audio")
+    upload_dir.mkdir(exist_ok=True)
+    audio_dir.mkdir(exist_ok=True)
+else:
+    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+    os.makedirs(settings.AUDIO_DIR, exist_ok=True)
+
