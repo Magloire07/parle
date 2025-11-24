@@ -1,260 +1,221 @@
-# Parle - Application d'Entraînement à l'Oral
+# 🗣️ PARLE - Plateforme d'Apprentissage Linguistique
 
-## 🎯 Description
-
-Parle est une application web qui aide les utilisateurs à améliorer leur expression orale en lisant des textes à voix haute. L'application analyse la prononciation, l'intonation et le rythme pour fournir un feedback détaillé et des suggestions d'amélioration.
-
-## ✨ Fonctionnalités
-
-### 🔍 OCR (Reconnaissance Optique de Caractères)
-- Scan de pages de livre avec Tesseract OCR
-- Extraction de texte structuré en paragraphes
-- Support multilingue (français, anglais)
-
-### 🎤 Analyse Vocale
-- Transcription en temps réel avec Whisper
-- Détection des erreurs de prononciation
-- Analyse prosodique (intonation, rythme, pauses)
-- Alignement avec le texte attendu
-
-### 🔊 Synthèse Vocale
-- Génération de modèles audio corrects
-- Support de différentes langues
-- Contrôle de la vitesse de lecture
-
-### 📝 Évaluation des Résumés
-- Analyse de résumés oraux
-- Évaluation de la pertinence et de la qualité
-- Suggestions d'amélioration
-- Détection des erreurs de transition
+Plateforme web pour l'apprentissage intensif de l'anglais et du français (niveau B2 → C2).
 
 ## 🏗️ Architecture
 
-### Frontend (Vue.js 3)
-- Interface utilisateur moderne et responsive
-- Composants réutilisables
-- Gestion d'état avec Pinia
-- Intégration avec Element Plus
+- **Backend**: FastAPI (Python 3.10+)
+- **Frontend**: Vue.js 3 + Vite
+- **Base de données**: PostgreSQL
+- **Authentification**: JWT
+- **Styling**: Tailwind CSS (thème sombre)
 
-### Backend (FastAPI)
-- API REST performante
-- Traitement asynchrone
-- Intégration des services IA
-- Gestion des fichiers audio
+## 📋 Prérequis
 
-### Base de Données (PostgreSQL)
-- Stockage des utilisateurs et textes
-- Historique des lectures
-- Statistiques de progression
-- Données de feedback
-
-### Services IA
-- **Tesseract OCR** : Extraction de texte
-- **Whisper** : Reconnaissance vocale
-- **gTTS/Coqui** : Synthèse vocale
-- **Parselmouth** : Analyse prosodique
-- **Transformers** : Évaluation des résumés
+- Python 3.10+
+- Node.js 20 LTS
+- PostgreSQL 15+
+- Git
 
 ## 🚀 Installation
 
-### Prérequis
-- Python 3.9+
-- Node.js 18+
-- PostgreSQL 13+
-- Docker (optionnel)
-
-### Installation avec Docker
+### 1. Cloner le repository
 
 ```bash
-# Cloner le repository
 git clone <repository-url>
 cd parle
-
-# Démarrer les services
-cd docker
-docker-compose up -d
-
-# L'application sera disponible sur :
-# - Frontend: http://localhost:3000
-# - Backend: http://localhost:5000
-# - Base de données: localhost:5432
 ```
 
-### Installation manuelle
+### 2. Configuration de la base de données
 
-#### Backend
+```bash
+# Créer la base de données PostgreSQL
+createdb parle
+
+# Ou via psql
+psql -U postgres
+CREATE DATABASE parle;
+CREATE USER parle_user WITH PASSWORD 'parle_password';
+GRANT ALL PRIVILEGES ON DATABASE parle TO parle_user;
+```
+
+### 3. Backend (FastAPI)
+
 ```bash
 cd backend
-python -m venv venv
+
+# Créer un environnement virtuel
+python3 -m venv venv
 source venv/bin/activate  # Linux/Mac
 # ou
 venv\Scripts\activate  # Windows
 
+# Installer les dépendances
 pip install -r requirements.txt
-uvicorn app.main:app --reload
+
+# Copier et configurer .env
+cp .env.example .env
+# Éditer .env avec vos paramètres
+
+# Créer les tables (migrations Alembic)
+alembic upgrade head
+
+# Lancer le serveur de développement
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-#### Frontend
+L'API sera accessible sur `http://localhost:8000`
+Documentation interactive: `http://localhost:8000/docs`
+
+### 4. Frontend (Vue.js)
+
 ```bash
 cd frontend
+
+# Installer les dépendances
 npm install
+
+# Lancer le serveur de développement
 npm run dev
 ```
 
-#### Base de données
-```bash
-# Créer la base de données
-createdb parle
+L'application sera accessible sur `http://localhost:5173`
 
-# Exécuter les migrations
-psql -d parle -f database/init.sql
+## 📁 Structure du projet
+
+```
+parle/
+├── backend/
+│   ├── app/
+│   │   ├── api/routes/       # Routes API
+│   │   ├── core/             # Configuration, DB, Auth
+│   │   ├── models/           # Modèles SQLAlchemy
+│   │   ├── schemas.py        # Schémas Pydantic
+│   │   └── main.py           # Point d'entrée FastAPI
+│   ├── alembic/              # Migrations
+│   ├── requirements.txt
+│   └── .env.example
+├── frontend/
+│   ├── src/
+│   │   ├── components/       # Composants Vue
+│   │   ├── views/            # Pages
+│   │   ├── router/           # Configuration routes
+│   │   ├── stores/           # Stores Pinia
+│   │   ├── services/         # API clients
+│   │   └── assets/           # CSS, images
+│   ├── package.json
+│   └── tailwind.config.js
+└── CAHIER_DES_CHARGES.md
 ```
 
-## 📖 Utilisation
+## 🔑 Fonctionnalités principales
 
-### 1. Scanner un Document
-1. Accédez à la page d'upload
-2. Glissez-déposez une image de page de livre
-3. L'application extrait le texte avec OCR
+### ✅ MVP (Phase 1-2)
 
-### 2. Lire à Voix Haute
-1. Le texte est affiché paragraphe par paragraphe
-2. Lisez à voix haute en cliquant sur "Enregistrer"
-3. Recevez un feedback en temps réel
+- [x] Authentification JWT (login/register)
+- [x] Système de cartes flash avec algorithme SRS (répétition espacée)
+- [x] Enregistreur audio pour exercices
+- [x] Journal de progression
+- [x] Planificateur hebdomadaire
+- [x] Suivi de progression avec statistiques
 
-### 3. Analyser les Erreurs
-1. Les mots mal prononcés sont surlignés
-2. Écoutez le modèle correct
-3. Répétez jusqu'à la correction
+### 🚧 En cours de développement
 
-### 4. Résumer Oralement
-1. Tous les 2 paragraphes, passez en mode résumé
-2. Enregistrez votre résumé
-3. Recevez des suggestions d'amélioration
+- [ ] Interface Dashboard
+- [ ] Pages de practice (Speaking, Listening, Reading, Writing)
+- [ ] Bibliothèque de ressources
+- [ ] Tests blancs (Cambridge C2 / IELTS)
 
-## 🔧 Configuration
+## 🛠️ Développement
 
-### Variables d'environnement
-```bash
-# Backend
-DATABASE_URL=postgresql://user:password@localhost:5432/parle
-SECRET_KEY=your-secret-key
-TESSERACT_CMD=/usr/bin/tesseract
-WHISPER_MODEL=base
-TTS_LANG=fr
+### Commandes utiles
 
-# Frontend
-VITE_API_URL=http://localhost:5000
-```
-
-### Configuration OCR
-- Langues supportées : `fra+eng`
-- Modèle Tesseract : `--oem 3 --psm 6`
-- Formats d'image : JPG, PNG, GIF
-
-### Configuration Whisper
-- Modèle : `base` (équilibre performance/précision)
-- Device : `cpu` (ou `cuda` si disponible)
-- Langues : français, anglais
-
-## 📊 API Endpoints
-
-### OCR
-- `POST /ocr/upload` - Upload et traitement d'image
-- `POST /ocr/analyze` - Analyse de texte existant
-
-### Speech
-- `POST /speech/analyze` - Analyse d'enregistrement vocal
-- `POST /speech/prosody` - Analyse prosodique
-
-### TTS
-- `POST /tts/read` - Génération de parole
-- `GET /tts/audio/{filename}` - Récupération de fichier audio
-
-### Summary
-- `POST /summary/evaluate` - Évaluation de résumé
-- `POST /summary/generate` - Génération de suggestions
-
-### Health
-- `GET /health/` - Vérification de l'état de l'API
-
-## 🧪 Tests
+#### Backend
 
 ```bash
-# Backend
-cd backend
+# Créer une nouvelle migration
+alembic revision --autogenerate -m "Description"
+
+# Appliquer les migrations
+alembic upgrade head
+
+# Tests
 pytest
 
-# Frontend
-cd frontend
-npm run test
+# Linting
+ruff check .
+black .
 ```
 
-## 📈 Monitoring
+#### Frontend
 
-### Logs
-- Backend : `/var/log/parle/`
-- Frontend : Console du navigateur
-- Base de données : Logs PostgreSQL
-
-### Métriques
-- Santé de l'API : `GET /health/`
-- Performance : Temps de réponse des endpoints
-- Utilisation : Nombre de requêtes par minute
-
-## 🔒 Sécurité
-
-- Authentification JWT
-- Validation des fichiers uploadés
-- Limitation de la taille des fichiers
-- CORS configuré
-- Sanitisation des entrées utilisateur
-
-## 🚀 Déploiement
-
-### Production
 ```bash
-# Build des images Docker
-docker-compose -f docker-compose.prod.yml build
+# Build de production
+npm run build
 
-# Déploiement
-docker-compose -f docker-compose.prod.yml up -d
+# Preview du build
+npm run preview
+
+# Linting
+npm run lint
+
+# Format code
+npm run format
 ```
 
-### Variables d'environnement de production
-```bash
-DEBUG=False
-DATABASE_URL=postgresql://user:password@db:5432/parle
-SECRET_KEY=your-production-secret-key
-ALLOWED_ORIGINS=https://yourdomain.com
+## 🌐 Déploiement en production
+
+Voir le [Cahier des Charges](./CAHIER_DES_CHARGES.md) section 11 pour les instructions de déploiement sur machine locale avec:
+- Nginx reverse proxy
+- SSL/TLS (Let's Encrypt)
+- Systemd services
+- PostgreSQL en production
+
+## 📝 Variables d'environnement
+
+### Backend (.env)
+
+```env
+DATABASE_URL=postgresql://parle_user:parle_password@localhost:5432/parle
+SECRET_KEY=your-secret-key-32-chars-min
+DEBUG=True
+CORS_ORIGINS=http://localhost:5173
 ```
+
+### Frontend (.env)
+
+```env
+VITE_API_BASE_URL=http://localhost:8000
+VITE_APP_NAME=Parle
+```
+
+## 🎨 Thème sombre
+
+Palette de couleurs:
+- Fond principal: `#0a0a0a`
+- Fond secondaire: `#1a1a1a`
+- Cards: `#252525`
+- Texte: `#e5e5e5`
+- Accent bleu: `#3b82f6`
+- Accent violet: `#8b5cf6`
+
+## 📚 Documentation API
+
+Une fois le backend lancé, accédez à:
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
 
 ## 🤝 Contribution
 
-1. Fork le projet
-2. Créer une branche feature (`git checkout -b feature/AmazingFeature`)
-3. Commit les changements (`git commit -m 'Add some AmazingFeature'`)
-4. Push vers la branche (`git push origin feature/AmazingFeature`)
-5. Ouvrir une Pull Request
+1. Créer une branche feature
+2. Commit les changements
+3. Push vers la branche
+4. Créer une Pull Request
 
-## 📝 Licence
+## 📄 Licence
 
-Ce projet est sous licence MIT. Voir le fichier `LICENSE` pour plus de détails.
+MIT
 
-## 📞 Support
+## 👤 Auteur
 
-- **Email** : support@parle-app.com
-- **Documentation** : [Lien vers docs]
-- **Issues** : [Lien vers GitHub Issues]
-
-## 🙏 Remerciements
-
-- [Tesseract OCR](https://github.com/tesseract-ocr/tesseract)
-- [Whisper](https://github.com/openai/whisper)
-- [FastAPI](https://fastapi.tiangolo.com/)
-- [Vue.js](https://vuejs.org/)
-- [Element Plus](https://element-plus.org/)
-
----
-
-*Développé avec ❤️ pour améliorer l'expression orale*
+Développé avec ❤️ pour l'apprentissage linguistique intensif
