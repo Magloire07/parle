@@ -66,34 +66,3 @@ if __name__ == "__main__":
         port=settings.PORT,
         reload=settings.DEBUG
     )
-
-        if not key:
-            return "(empty)"
-        if len(key) < 12:
-            return key[:3] + "***" + key[-2:]
-        return key[:6] + "***" + key[-4:]
-    logger.info(
-        "Summary Config -> simulated=%s impl=%s whisper_model=%s device=%s GPT_KEY=%s",
-        settings.USE_SIMULATED_SUMMARY,
-        getattr(settings, 'SUMMARY_TRANSCRIBE_IMPL', 'n/a'),
-        settings.WHISPER_MODEL,
-        settings.WHISPER_DEVICE,
-        mask(settings.GPT_API_KEY)
-    )
-
-@app.get("/")
-async def root():
-    """Point d'entrée principal de l'API"""
-    return {
-        "message": "Bienvenue sur l'API Parle",
-        "version": "1.0.0",
-        "docs": "/docs"
-    }
-
-if __name__ == "__main__":
-    uvicorn.run(
-        "app.main:app",
-        host="0.0.0.0",
-        port=5000,
-        reload=True
-    )

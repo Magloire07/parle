@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     PORT: int = 8000
     
     # CORS
-    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173,https://localhost"
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3001,http://localhost:5173,https://localhost"
     
     # Database
     DATABASE_URL: str = "postgresql://parle_user:parle_password@localhost:5432/parle"

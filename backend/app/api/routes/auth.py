@@ -51,7 +51,18 @@ async def login(
     """Connexion et génération de token JWT"""
     user = db.query(User).filter(User.email == form_data.username).first()
     
-    if not user or not verify_password(form_data.password, user.hashed_password):
+    if not user:
+        print(f"User not found: {form_data.username}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    password_valid = verify_password(form_data.password, user.hashed_password)
+    print(f"Password verification for {user.email}: {password_valid}")
+    
+    if not password_valid:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
