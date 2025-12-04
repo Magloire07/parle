@@ -93,10 +93,21 @@
           </div>
         </div>
 
+        <!-- Progression Chart -->
+        <div class="bg-[#252525] rounded-lg p-6 mb-8 border border-gray-800">
+          <h3 class="text-xl font-bold text-white mb-4">📈 Évolution des Flashcards par Catégorie</h3>
+          <div v-if="stats.progression_data && Object.keys(stats.progression_data).length > 0" class="h-80">
+            <Line :data="chartData" :options="chartOptions" />
+          </div>
+          <div v-else class="text-center py-12 text-gray-400">
+            Créez des flashcards pour voir votre progression
+          </div>
+        </div>
+
         <!-- Flashcards Stats -->
         <div class="bg-[#252525] rounded-lg p-6 mb-8 border border-gray-800">
           <h3 class="text-xl font-bold text-white mb-4">📊 Répartition des Flashcards</h3>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <div class="text-sm text-gray-400 mb-2">Par catégorie</div>
               <div class="space-y-2">
@@ -108,35 +119,22 @@
                   <span class="text-white">{{ getCategoryLabel(category) }}</span>
                   <span class="px-2 py-1 bg-[#1a1a1a] rounded text-gray-400">{{ count }}</span>
                 </div>
-              </div>
-            </div>
-
-            <div>
-              <div class="text-sm text-gray-400 mb-2">Par langue</div>
-              <div class="space-y-2">
-                <div
-                  v-for="(count, lang) in stats.flashcards_by_language"
-                  :key="lang"
-                  class="flex justify-between items-center"
-                >
-                  <span class="text-white">{{ lang === 'en' ? '🇬🇧 Anglais' : '🇫🇷 Français' }}</span>
-                  <span class="px-2 py-1 bg-[#1a1a1a] rounded text-gray-400">{{ count }}</span>
+                <div v-if="!stats.flashcards_by_category || Object.keys(stats.flashcards_by_category).length === 0" class="text-gray-500 text-sm">
+                  Aucune flashcard pour le moment
                 </div>
               </div>
             </div>
 
             <div>
-              <div class="text-sm text-gray-400 mb-2">Statut révision</div>
+              <div class="text-sm text-gray-400 mb-2">Blocs de planning</div>
               <div class="space-y-2">
                 <div class="flex justify-between items-center">
-                  <span class="text-white">À réviser</span>
-                  <span class="px-2 py-1 bg-red-600 rounded text-white">{{ stats.due_flashcards || 0 }}</span>
+                  <span class="text-white">Total</span>
+                  <span class="px-2 py-1 bg-[#1a1a1a] rounded text-gray-400">{{ stats.total_schedule_blocks || 0 }}</span>
                 </div>
                 <div class="flex justify-between items-center">
-                  <span class="text-white">À jour</span>
-                  <span class="px-2 py-1 bg-green-600 rounded text-white">
-                    {{ (stats.total_flashcards || 0) - (stats.due_flashcards || 0) }}
-                  </span>
+                  <span class="text-white">Complétés</span>
+                  <span class="px-2 py-1 bg-green-600 rounded text-white">{{ stats.completed_schedule_blocks || 0 }}</span>
                 </div>
               </div>
             </div>
@@ -144,34 +142,20 @@
         </div>
 
         <!-- Recent Activity -->
-        <div class="bg-[#252525] rounded-lg p-6 border border-gray-800">
-          <h3 class="text-xl font-bold text-white mb-4">🕐 Activité récente</h3>
-          <div class="space-y-3">
-            <div
-              v-for="activity in recentActivity"
-              :key="activity.id"
-              class="flex items-center gap-4 p-3 bg-[#1a1a1a] rounded-lg"
-            >
-              <div class="text-2xl">{{ activity.icon }}</div>
-              <div class="flex-1">
-                <div class="text-white">{{ activity.title }}</div>
-                <div class="text-sm text-gray-400">{{ activity.date }}</div>
-              </div>
-              <div class="text-gray-500">{{ activity.count }}</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Streak -->
-        <div class="mt-8 bg-gradient-to-r from-[#3b82f6] to-[#8b5cf6] rounded-lg p-6">
-          <div class="flex items-center justify-between">
+        <div class="bg-[#252525] rounded-lg p-6 mb-8 border border-gray-800">
+          <h3 class="text-xl font-bold text-white mb-4">📈 Résumé</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <div class="text-white text-lg mb-1">🔥 Série actuelle</div>
-              <div class="text-white text-4xl font-bold">{{ stats.current_streak || 0 }} jours</div>
+              <div class="text-sm text-gray-400 mb-2">Enregistrements audio</div>
+              <div class="text-2xl font-bold text-white">{{ formatSeconds(stats.total_recording_time_seconds) }}</div>
+              <div class="text-sm text-gray-500">Temps total d'enregistrement</div>
             </div>
-            <div class="text-right">
-              <div class="text-white text-sm opacity-75 mb-1">Record</div>
-              <div class="text-white text-2xl font-bold">{{ stats.longest_streak || 0 }} jours</div>
+            <div>
+              <div class="text-sm text-gray-400 mb-2">Planning</div>
+              <div class="text-2xl font-bold text-white">
+                {{ stats.completed_schedule_blocks || 0 }} / {{ stats.total_schedule_blocks || 0 }}
+              </div>
+              <div class="text-sm text-gray-500">Blocs complétés</div>
             </div>
           </div>
         </div>
@@ -181,8 +165,32 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { progressAPI } from '@/services/parle-api'
+import { Line } from 'vue-chartjs'
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+} from 'chart.js'
+
+// Enregistrer les composants Chart.js
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+)
 
 const stats = ref({})
 const loading = ref(false)
@@ -193,6 +201,103 @@ const recentActivity = ref([])
 onMounted(() => {
   loadStats()
 })
+
+// Configuration du graphique
+const chartData = computed(() => {
+  if (!stats.value.progression_data) return null
+  
+  const progressionData = stats.value.progression_data
+  const categories = Object.keys(progressionData)
+  
+  if (categories.length === 0) return null
+  
+  const labels = progressionData[categories[0]]?.dates || []
+  
+  const datasets = categories.map((category, index) => {
+    const colors = {
+      vocabulary: { border: 'rgb(59, 130, 246)', bg: 'rgba(59, 130, 246, 0.1)' },
+      grammar: { border: 'rgb(139, 92, 246)', bg: 'rgba(139, 92, 246, 0.1)' },
+      expression: { border: 'rgb(34, 197, 94)', bg: 'rgba(34, 197, 94, 0.1)' }
+    }
+    
+    const categoryLabels = {
+      vocabulary: 'Vocabulaire',
+      grammar: 'Grammaire',
+      expression: 'Expression'
+    }
+    
+    return {
+      label: categoryLabels[category] || category,
+      data: progressionData[category].counts,
+      borderColor: colors[category]?.border || 'rgb(156, 163, 175)',
+      backgroundColor: colors[category]?.bg || 'rgba(156, 163, 175, 0.1)',
+      borderWidth: 2,
+      tension: 0.4,
+      fill: true,
+      pointRadius: 4,
+      pointHoverRadius: 6
+    }
+  })
+  
+  return {
+    labels: labels.map(date => {
+      const d = new Date(date)
+      return d.toLocaleDateString('fr-FR', { month: 'short', day: 'numeric' })
+    }),
+    datasets
+  }
+})
+
+const chartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: {
+      display: true,
+      position: 'top',
+      labels: {
+        color: 'rgb(156, 163, 175)',
+        font: {
+          size: 12
+        }
+      }
+    },
+    tooltip: {
+      mode: 'index',
+      intersect: false,
+      backgroundColor: 'rgba(37, 37, 37, 0.9)',
+      titleColor: 'rgb(255, 255, 255)',
+      bodyColor: 'rgb(209, 213, 219)',
+      borderColor: 'rgb(75, 85, 99)',
+      borderWidth: 1
+    }
+  },
+  scales: {
+    x: {
+      grid: {
+        color: 'rgba(75, 85, 99, 0.2)'
+      },
+      ticks: {
+        color: 'rgb(156, 163, 175)'
+      }
+    },
+    y: {
+      beginAtZero: true,
+      grid: {
+        color: 'rgba(75, 85, 99, 0.2)'
+      },
+      ticks: {
+        color: 'rgb(156, 163, 175)',
+        stepSize: 1
+      }
+    }
+  },
+  interaction: {
+    mode: 'nearest',
+    axis: 'x',
+    intersect: false
+  }
+}
 
 const loadStats = async () => {
   loading.value = true
@@ -236,6 +341,16 @@ const formatMinutes = (minutes) => {
   if (hours === 0) return `${mins}min`
   if (mins === 0) return `${hours}h`
   return `${hours}h${mins}min`
+}
+
+const formatSeconds = (seconds) => {
+  if (!seconds) return '0min'
+  const hours = Math.floor(seconds / 3600)
+  const mins = Math.floor((seconds % 3600) / 60)
+  const secs = seconds % 60
+  if (hours > 0) return `${hours}h${mins}min`
+  if (mins > 0) return `${mins}min${secs}s`
+  return `${secs}s`
 }
 
 const calculateAverage = () => {

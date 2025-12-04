@@ -208,16 +208,31 @@
         </div>
       </div>
     </div>
+
+    <!-- Confirm Delete Dialog -->
+    <ConfirmDialog
+      v-model="showDeleteConfirm"
+      title="Supprimer l'entrée"
+      message="Êtes-vous sûr de vouloir supprimer cette entrée de journal ? Cette action est irréversible."
+      confirm-text="Supprimer"
+      cancel-text="Annuler"
+      @confirm="confirmDeleteEntry"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
 import { journalAPI } from '@/services/parle-api'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const entries = ref([])
 const loading = ref(false)
 const editing = ref(false)
+
+// Dialogs
+const showDeleteConfirm = ref(false)
+const entryToDelete = ref(null)
 const editingEntry = ref(null)
 const viewingEntry = ref(null)
 const saving = ref(false)
@@ -302,14 +317,19 @@ const saveEntry = async () => {
   }
 }
 
-const deleteEntry = async (id) => {
-  if (!confirm('Supprimer cette entrée ?')) return
-  
+const deleteEntry = (id) => {
+  entryToDelete.value = id
+  showDeleteConfirm.value = true
+}
+
+const confirmDeleteEntry = async () => {
   try {
-    await journalAPI.delete(id)
+    await journalAPI.delete(entryToDelete.value)
     loadEntries()
   } catch (err) {
     console.error('Error deleting entry:', err)
+  } finally {
+    entryToDelete.value = null
   }
 }
 

@@ -92,12 +92,16 @@
 
       <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <div
-          v-for="card in flashcards"
+          v-for="(card, index) in flashcards"
           :key="card.id"
-          class="bg-[#252525] rounded-lg p-6 border border-gray-800 hover:border-gray-700 transition-colors cursor-pointer"
-          @click="viewCard(card)"
+          class="bg-[#252525] rounded-lg p-6 border border-gray-800 hover:border-gray-700 transition-colors relative"
         >
-          <div class="flex justify-between items-start mb-4">
+          <!-- Card Number Badge -->
+          <div class="absolute top-4 left-4 w-8 h-8 bg-[#3b82f6] rounded-full flex items-center justify-center text-white font-bold text-sm">
+            {{ index + 1 }}
+          </div>
+
+          <div class="flex justify-between items-start mb-4 pl-8">
             <span class="px-2 py-1 bg-[#1a1a1a] text-xs rounded text-gray-400">
               {{ card.language === 'en' ? '🇬🇧' : '🇫🇷' }} {{ getCategoryLabel(card.category) }}
             </span>
@@ -117,12 +121,11 @@
             </div>
           </div>
 
-          <div class="mb-4">
-            <div class="text-white font-medium mb-2">{{ card.front }}</div>
-            <div class="text-gray-400 text-sm">{{ card.back }}</div>
+          <div class="mb-4 cursor-pointer" @click="viewCard(card)">
+            <div class="text-white font-medium text-lg">{{ card.front }}</div>
           </div>
 
-          <div class="flex flex-wrap gap-2">
+          <div class="flex flex-wrap gap-2 mb-4">
             <span
               v-for="tag in card.tags"
               :key="tag"
@@ -132,8 +135,15 @@
             </span>
           </div>
 
-          <div class="mt-4 pt-4 border-t border-gray-800 text-xs text-gray-500">
-            Prochaine révision: {{ formatDate(card.next_review) }}
+          <div class="pt-4 border-t border-gray-800">
+            <div class="flex justify-between items-center text-xs">
+              <span class="text-gray-500">
+                📊 Révisée {{ card.review_count }} fois
+              </span>
+              <span class="text-gray-500">
+                📅 {{ formatDate(card.next_review) }}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -241,15 +251,20 @@
         </div>
 
         <div
-          class="bg-[#252525] rounded-lg p-12 cursor-pointer perspective-1000"
+          class="flashcard-container cursor-pointer"
           @click="flipCard"
         >
-          <div :class="{ 'rotate-y-180': showAnswer }" class="transition-transform duration-500">
-            <div v-if="!showAnswer" class="text-center">
+          <div 
+            class="flashcard"
+            :class="{ 'flipped': showAnswer }"
+          >
+            <!-- Front Face -->
+            <div class="flashcard-face flashcard-front">
               <div class="text-sm text-gray-400 mb-4">QUESTION</div>
               <div class="text-2xl text-white">{{ currentReviewCard.front }}</div>
             </div>
-            <div v-else class="text-center">
+            <!-- Back Face -->
+            <div class="flashcard-face flashcard-back">
               <div class="text-sm text-gray-400 mb-4">RÉPONSE</div>
               <div class="text-2xl text-white mb-4">{{ currentReviewCard.back }}</div>
               <div class="text-sm text-gray-500">{{ currentReviewCard.front }}</div>
@@ -259,33 +274,51 @@
 
         <div v-if="showAnswer" class="grid grid-cols-3 gap-4 mt-6">
           <button
-            @click="rateCard(1)"
-            class="px-6 py-4 bg-red-600 hover:bg-red-700 text-white rounded-lg"
+            @click.stop="rateCard(1)"
+            class="px-6 py-4 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
           >
             ❌ Difficile
           </button>
           <button
-            @click="rateCard(3)"
-            class="px-6 py-4 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg"
+            @click.stop="rateCard(3)"
+            class="px-6 py-4 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors"
           >
             🤔 Moyen
           </button>
           <button
-            @click="rateCard(5)"
-            class="px-6 py-4 bg-green-600 hover:bg-green-700 text-white rounded-lg"
+            @click.stop="rateCard(5)"
+            class="px-6 py-4 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
           >
             ✅ Facile
           </button>
         </div>
 
         <button
-          @click="endReview"
-          class="mt-6 w-full px-6 py-3 bg-[#1a1a1a] hover:bg-[#2a2a2a] text-white rounded-lg"
+          @click.stop="endReview"
+          class="mt-6 w-full px-6 py-3 bg-[#1a1a1a] hover:bg-[#2a2a2a] text-white rounded-lg transition-colors"
         >
           Terminer la révision
         </button>
       </div>
     </div>
+
+    <!-- Confirm Delete Dialog -->
+    <ConfirmDialog
+      v-model="showDeleteConfirm"
+      title="Supprimer la flashcard"
+      message="Êtes-vous sûr de vouloir supprimer cette flashcard ? Cette action est irréversible."
+      confirm-text="Supprimer"
+      cancel-text="Annuler"
+      @confirm="confirmDelete"
+    />
+
+    <!-- Error Alert Dialog -->
+    <AlertDialog
+      v-model="showErrorAlert"
+      title="Erreur"
+      type="error"
+      :message="errorMessage"
+    />
   </div>
 </template>
 
@@ -293,6 +326,8 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { flashcardsAPI } from '@/services/parle-api'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import AlertDialog from '@/components/AlertDialog.vue'
 
 const router = useRouter()
 const flashcards = ref([])
@@ -301,6 +336,12 @@ const showCreateModal = ref(false)
 const editingCard = ref(null)
 const saving = ref(false)
 const error = ref('')
+
+// Dialogs
+const showDeleteConfirm = ref(false)
+const cardToDelete = ref(null)
+const showErrorAlert = ref(false)
+const errorMessage = ref('')
 
 const filters = ref({
   language: '',
@@ -386,14 +427,19 @@ const editCard = (card) => {
   showCreateModal.value = true
 }
 
-const deleteCard = async (id) => {
-  if (!confirm('Supprimer cette flashcard ?')) return
-  
+const deleteCard = (id) => {
+  cardToDelete.value = id
+  showDeleteConfirm.value = true
+}
+
+const confirmDelete = async () => {
   try {
-    await flashcardsAPI.delete(id)
+    await flashcardsAPI.delete(cardToDelete.value)
     loadFlashcards()
   } catch (err) {
     console.error('Error deleting card:', err)
+  } finally {
+    cardToDelete.value = null
   }
 }
 
@@ -426,19 +472,25 @@ const flipCard = () => {
 }
 
 const rateCard = async (quality) => {
+  console.log('Rating card with quality:', quality)
   try {
     await flashcardsAPI.review(currentReviewCard.value.id, { quality })
+    console.log('Card rated successfully')
     
     // Next card
     if (currentReviewIndex.value < reviewCards.value.length - 1) {
       currentReviewIndex.value++
       currentReviewCard.value = reviewCards.value[currentReviewIndex.value]
       showAnswer.value = false
+      console.log('Moving to next card:', currentReviewIndex.value)
     } else {
+      console.log('Review complete')
       endReview()
     }
   } catch (err) {
     console.error('Error rating card:', err)
+    errorMessage.value = 'Erreur lors de la notation: ' + (err.response?.data?.detail || err.message)
+    showErrorAlert.value = true
   }
 }
 

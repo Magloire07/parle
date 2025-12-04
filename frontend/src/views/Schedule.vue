@@ -71,9 +71,9 @@
               class="p-2 rounded bg-[#3b82f6] text-white text-xs mb-1 cursor-pointer hover:bg-[#2563eb]"
               @click.stop="editBlock(block)"
             >
-              <div class="font-medium">{{ block.title }}</div>
+              <div class="font-medium">{{ block.activity_name }}</div>
               <div class="text-[10px] opacity-75">
-                {{ formatTime(block.start_time) }} - {{ formatTime(block.end_time) }}
+                {{ formatTime(block.start_time) }} - {{ block.duration }}min
               </div>
             </div>
           </div>
@@ -94,9 +94,9 @@
 
         <form @submit.prevent="saveBlock" class="space-y-4">
           <div>
-            <label class="block text-sm text-gray-400 mb-2">Titre *</label>
+            <label class="block text-sm text-gray-400 mb-2">Nom de l'activité *</label>
             <input
-              v-model="form.title"
+              v-model="form.activity_name"
               required
               type="text"
               class="w-full px-4 py-3 bg-[#1a1a1a] border border-gray-700 rounded-lg text-white"
@@ -106,12 +106,19 @@
 
           <div>
             <label class="block text-sm text-gray-400 mb-2">Jour *</label>
-            <input
-              v-model="form.day_of_week"
+            <select
+              v-model.number="form.day_of_week"
               required
-              type="date"
               class="w-full px-4 py-3 bg-[#1a1a1a] border border-gray-700 rounded-lg text-white"
-            />
+            >
+              <option :value="0">Lundi</option>
+              <option :value="1">Mardi</option>
+              <option :value="2">Mercredi</option>
+              <option :value="3">Jeudi</option>
+              <option :value="4">Vendredi</option>
+              <option :value="5">Samedi</option>
+              <option :value="6">Dimanche</option>
+            </select>
           </div>
 
           <div class="grid grid-cols-2 gap-4">
@@ -125,11 +132,12 @@
               />
             </div>
             <div>
-              <label class="block text-sm text-gray-400 mb-2">Heure fin *</label>
+              <label class="block text-sm text-gray-400 mb-2">Durée (min) *</label>
               <input
-                v-model="form.end_time"
+                v-model.number="form.duration"
                 required
-                type="time"
+                type="number"
+                min="0"
                 class="w-full px-4 py-3 bg-[#1a1a1a] border border-gray-700 rounded-lg text-white"
               />
             </div>
@@ -142,23 +150,12 @@
               required
               class="w-full px-4 py-3 bg-[#1a1a1a] border border-gray-700 rounded-lg text-white"
             >
-              <option value="flashcards">📚 Flashcards</option>
-              <option value="practice">🎤 Practice Audio</option>
+              <option value="anki">📚 Flashcards (Anki)</option>
+              <option value="speaking">🎤 Speaking Practice</option>
               <option value="reading">📖 Lecture</option>
               <option value="writing">✍️ Écriture</option>
-              <option value="grammar">📝 Grammaire</option>
-              <option value="other">➕ Autre</option>
+              <option value="listening">👂 Écoute</option>
             </select>
-          </div>
-
-          <div>
-            <label class="block text-sm text-gray-400 mb-2">Description</label>
-            <textarea
-              v-model="form.description"
-              rows="3"
-              class="w-full px-4 py-3 bg-[#1a1a1a] border border-gray-700 rounded-lg text-white"
-              placeholder="Détails de la session..."
-            ></textarea>
           </div>
 
           <div v-if="error" class="text-red-500 text-sm">{{ error }}</div>
@@ -190,27 +187,41 @@
         </form>
       </div>
     </div>
+
+    <!-- Confirm Delete Dialog -->
+    <ConfirmDialog
+      v-model="showDeleteConfirm"
+      title="Supprimer le bloc"
+      message="Êtes-vous sûr de vouloir supprimer ce bloc de planning ? Cette action est irréversible."
+      confirm-text="Supprimer"
+      cancel-text="Annuler"
+      @confirm="confirmDeleteBlock"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { scheduleAPI } from '@/services/parle-api'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const currentWeekStart = ref(new Date())
 const scheduleBlocks = ref([])
 const showCreateModal = ref(false)
 const editingBlock = ref(null)
+
+// Dialogs
+const showDeleteConfirm = ref(false)
+const blockToDelete = ref(null)
 const saving = ref(false)
 const error = ref('')
 
 const form = ref({
-  title: '',
-  day_of_week: '',
+  day_of_week: 0,
   start_time: '',
-  end_time: '',
-  activity_type: 'flashcards',
-  description: ''
+  duration: 60,
+  activity_type: 'reading',
+  activity_name: ''
 })
 
 const hours = Array.from({ length: 24 }, (_, i) => i)
@@ -246,18 +257,21 @@ const loadSchedule = async () => {
 }
 
 const getBlocksForSlot = (date, hour) => {
-  const dateStr = formatDateForAPI(date)
+  // Calculer day_of_week (0=Lundi, 6=Dimanche)
+  const dayOfWeek = (date.getDay() + 6) % 7
   return scheduleBlocks.value.filter(block => {
-    const blockDate = block.day_of_week
     const blockHour = parseInt(block.start_time.split(':')[0])
-    return blockDate === dateStr && blockHour === hour
+    return block.day_of_week === dayOfWeek && blockHour === hour
   })
 }
 
 const selectTimeSlot = (date, hour) => {
-  form.value.day_of_week = formatDateForAPI(date)
+  // Calculer day_of_week (0=Lundi, 6=Dimanche)
+  const dayOfWeek = (date.getDay() + 6) % 7
+  form.value.day_of_week = dayOfWeek
   form.value.start_time = `${hour.toString().padStart(2, '0')}:00`
-  form.value.end_time = `${(hour + 1).toString().padStart(2, '0')}:00`
+  form.value.duration = 60
+  form.value.activity_name = ''
   showCreateModal.value = true
 }
 
@@ -284,25 +298,29 @@ const saveBlock = async () => {
 const editBlock = (block) => {
   editingBlock.value = block
   form.value = {
-    title: block.title,
     day_of_week: block.day_of_week,
     start_time: block.start_time,
-    end_time: block.end_time,
+    duration: block.duration,
     activity_type: block.activity_type,
-    description: block.description || ''
+    activity_name: block.activity_name
   }
   showCreateModal.value = true
 }
 
-const deleteBlock = async () => {
-  if (!confirm('Supprimer ce bloc ?')) return
-  
+const deleteBlock = () => {
+  blockToDelete.value = editingBlock.value.id
+  showDeleteConfirm.value = true
+}
+
+const confirmDeleteBlock = async () => {
   try {
-    await scheduleAPI.delete(editingBlock.value.id)
+    await scheduleAPI.delete(blockToDelete.value)
     closeModal()
     loadSchedule()
   } catch (err) {
     console.error('Error deleting block:', err)
+  } finally {
+    blockToDelete.value = null
   }
 }
 
@@ -310,12 +328,11 @@ const closeModal = () => {
   showCreateModal.value = false
   editingBlock.value = null
   form.value = {
-    title: '',
-    day_of_week: '',
+    day_of_week: 0,
     start_time: '',
-    end_time: '',
-    activity_type: 'flashcards',
-    description: ''
+    duration: 60,
+    activity_type: 'reading',
+    activity_name: ''
   }
   error.value = ''
 }

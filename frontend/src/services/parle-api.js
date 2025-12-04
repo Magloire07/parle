@@ -51,7 +51,7 @@ export const flashcardsAPI = {
   getById: (id) => api.get(`/flashcards/${id}`),
   create: (data) => api.post('/flashcards', data),
   update: (id, data) => api.put(`/flashcards/${id}`, data),
-  review: (id, quality) => api.post(`/flashcards/${id}/review`, { quality }),
+  review: (id, reviewData) => api.post(`/flashcards/${id}/review`, reviewData),
   delete: (id) => api.delete(`/flashcards/${id}`),
 }
 

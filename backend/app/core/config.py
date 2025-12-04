@@ -31,8 +31,8 @@ class Settings(BaseSettings):
     # JWT
     SECRET_KEY: str = "your-secret-key-change-this-in-production-min-32-characters"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 525600  # 1 an (365 jours)
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 365  # 1 an
     
     # File storage
     UPLOAD_DIR: str = "/var/www/parle/uploads"

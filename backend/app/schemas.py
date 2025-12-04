@@ -70,18 +70,22 @@ class FlashcardResponse(FlashcardBase):
 # ========== Recording Schemas ==========
 class RecordingBase(BaseModel):
     language: str = Field(..., pattern="^(en|fr)$")
-    exercise_type: str = Field(..., pattern="^(monologue|shadowing|debate|dictation)$")
+    exercise_type: str = Field(..., pattern="^(monologue|shadowing|debate|dictation|pronunciation)$")
     duration: int = Field(..., gt=0)
     transcript: Optional[str] = None
     notes: Optional[str] = None
 
 class RecordingCreate(RecordingBase):
     audio_url: str
+    parent_id: Optional[str] = None
+    version: Optional[int] = 1
 
 class RecordingResponse(RecordingBase):
     id: str
     user_id: str
     audio_url: str
+    parent_id: Optional[str] = None
+    version: int
     created_at: datetime
     
     class Config:

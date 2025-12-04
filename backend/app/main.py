@@ -31,8 +31,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Montage des fichiers statiques (audio)
-audio_dir = Path("audio") if settings.DEBUG else Path(settings.AUDIO_DIR)
+# Monter le répertoire audio pour servir les fichiers
+audio_dir = Path(settings.AUDIO_DIR) if not settings.DEBUG else Path("audio")
 audio_dir.mkdir(exist_ok=True)
 app.mount("/audio", StaticFiles(directory=str(audio_dir)), name="audio")
 
