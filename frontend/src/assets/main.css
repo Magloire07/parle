@@ -4,33 +4,94 @@
 
 @layer base {
   * {
-    @apply border-gray-700;
+    border-color: theme('colors.dark.border');
   }
   
   body {
-    @apply bg-dark-bg text-dark-text font-sans;
+    @apply bg-dark-bg text-dark-text font-sans antialiased;
   }
   
   h1, h2, h3, h4, h5, h6 {
-    @apply font-bold text-dark-text;
+    @apply font-serif font-semibold text-dark-text;
+  }
+  
+  h1 {
+    @apply text-4xl tracking-tight;
+  }
+  
+  h2 {
+    @apply text-3xl tracking-tight;
+  }
+  
+  h3 {
+    @apply text-2xl;
   }
 }
 
 @layer components {
   .btn-primary {
-    @apply px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-lg transition-colors duration-150 font-medium;
+    @apply px-6 py-3 bg-primary hover:bg-primary-hover text-white rounded-xl transition-all duration-200 font-medium;
+    box-shadow: 0 4px 14px 0 rgba(59, 130, 246, 0.4);
+  }
+  
+  .btn-primary:hover {
+    box-shadow: 0 6px 20px 0 rgba(59, 130, 246, 0.5);
+    transform: scale(1.05);
+  }
+  
+  .btn-primary:active {
+    transform: scale(0.95);
   }
   
   .btn-secondary {
-    @apply px-4 py-2 bg-secondary hover:bg-secondary-hover text-white rounded-lg transition-colors duration-150 font-medium;
+    @apply px-6 py-3 bg-accent hover:bg-accent-hover text-white rounded-xl transition-all duration-200 font-medium;
+    box-shadow: 0 4px 14px 0 rgba(191, 90, 242, 0.4);
+  }
+  
+  .btn-secondary:hover {
+    box-shadow: 0 6px 20px 0 rgba(191, 90, 242, 0.5);
+    transform: scale(1.05);
+  }
+  
+  .btn-secondary:active {
+    transform: scale(0.95);
+  }
+  
+  .btn-gold {
+    @apply px-6 py-3 text-dark-bg rounded-xl transition-all duration-200 font-semibold;
+    background: linear-gradient(to right, #d4af37, #b8941f);
+    box-shadow: 0 4px 20px rgba(212, 175, 55, 0.2);
+  }
+  
+  .btn-gold:hover {
+    background: linear-gradient(to right, #b8941f, #d4af37);
+    box-shadow: 0 6px 24px rgba(212, 175, 55, 0.3);
+    transform: scale(1.05);
+  }
+  
+  .btn-gold:active {
+    transform: scale(0.95);
   }
   
   .card {
-    @apply bg-dark-bg-card rounded-lg p-6 shadow-lg;
+    @apply bg-dark-bg-card rounded-2xl p-8 transition-all duration-200;
+    border: 1px solid theme('colors.dark.border');
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.2);
+  }
+  
+  .card:hover {
+    border-color: theme('colors.dark.bg-hover');
   }
   
   .input-field {
-    @apply w-full px-4 py-2 bg-dark-bg-secondary border border-gray-700 rounded-lg text-dark-text placeholder-dark-text-secondary focus:outline-none focus:border-primary transition-colors;
+    @apply w-full px-4 py-3 bg-dark-bg-secondary rounded-xl text-dark-text placeholder-dark-text-secondary transition-all;
+    border: 1px solid theme('colors.dark.border');
+  }
+  
+  .input-field:focus {
+    @apply outline-none;
+    border-color: theme('colors.primary.DEFAULT');
+    box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.2);
   }
   
   .rotate-y-180 {

@@ -80,6 +80,13 @@ class RecordingCreate(RecordingBase):
     parent_id: Optional[str] = None
     version: Optional[int] = 1
 
+class RecordingUpdate(BaseModel):
+    language: Optional[str] = Field(None, pattern="^(en|fr)$")
+    exercise_type: Optional[str] = Field(None, pattern="^(monologue|shadowing|debate|dictation|pronunciation)$")
+    duration: Optional[int] = Field(None, gt=0)
+    transcript: Optional[str] = None
+    notes: Optional[str] = None
+
 class RecordingResponse(RecordingBase):
     id: str
     user_id: str

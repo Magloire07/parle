@@ -10,6 +10,8 @@
     "format": "prettier --write ."
   },
   "dependencies": {
+    "@fontsource/inter": "^5.2.8",
+    "@fontsource/jetbrains-mono": "^5.2.8",
     "@headlessui/vue": "^1.7.17",
     "@heroicons/vue": "^2.1.1",
     "@tiptap/starter-kit": "^2.2.0",

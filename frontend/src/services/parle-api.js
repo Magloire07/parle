@@ -67,6 +67,7 @@ export const recordingsAPI = {
   getAll: (params) => api.get('/recordings', { params }),
   getById: (id) => api.get(`/recordings/${id}`),
   create: (data) => api.post('/recordings', data),
+  update: (id, data) => api.put(`/recordings/${id}`, data),
   delete: (id) => api.delete(`/recordings/${id}`),
 }
 

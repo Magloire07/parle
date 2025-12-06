@@ -9,6 +9,7 @@ import Practice from '../views/Practice.vue'
 import Schedule from '../views/Schedule.vue'
 import Journal from '../views/Journal.vue'
 import Progress from '../views/Progress.vue'
+import Quiz from '../views/Quiz.vue'
 
 const routes = [
   {
@@ -61,6 +62,12 @@ const routes = [
     name: 'Progress',
     component: Progress,
     meta: { requiresAuth: true }
+  },
+  {
+    path: '/quiz',
+    name: 'Quiz',
+    component: Quiz,
+    meta: { requiresAuth: true }
   }
 ]
 
@@ -72,7 +79,7 @@ const router = createRouter({
 // Navigation guard
 router.beforeEach((to, from, next) => {
   const authStore = useAuthStore()
-  
+
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next('/login')
   } else if ((to.path === '/login' || to.path === '/register') && authStore.isAuthenticated) {

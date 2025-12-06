@@ -1,5 +1,6 @@
 <template>
-  <div class="min-h-screen bg-[#0a0a0a]">
+  <div class="min-h-screen bg-[#0a0a0a] relative">
+    <BackgroundWatermark />
     <!-- Header -->
     <header class="bg-[#252525] border-b border-gray-800">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -12,15 +13,16 @@
           </div>
           <button
             @click="createNewEntry"
-            class="px-4 py-2 bg-[#3b82f6] hover:bg-[#2563eb] text-white rounded-lg transition-colors"
+            class="flex items-center gap-2 px-4 py-2 bg-[#5a189a] hover:bg-[#7b2cbf] text-white rounded-lg transition-colors shadow-lg shadow-[#5a189a]/20"
           >
-            + Nouvelle Entrée
+            <PlusIcon class="w-5 h-5" />
+            <span>Nouvelle Entrée</span>
           </button>
         </div>
       </div>
     </header>
 
-    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
       <!-- Filters -->
       <div class="mb-6 flex gap-4">
         <select
@@ -35,7 +37,7 @@
       </div>
 
       <!-- Editor (when creating/editing) -->
-      <div v-if="editing" class="bg-[#252525] rounded-lg p-6 mb-6 border border-gray-800">
+      <div v-if="editing" class="bg-[#1a1a1a] rounded-lg p-6 mb-6 border border-gray-800 shadow-xl">
         <form @submit.prevent="saveEntry" class="space-y-4">
           <div>
             <label class="block text-sm text-gray-400 mb-2">Langue</label>
@@ -87,9 +89,10 @@
             <button
               type="submit"
               :disabled="saving"
-              class="px-6 py-3 bg-[#3b82f6] hover:bg-[#2563eb] disabled:bg-gray-600 text-white rounded-lg"
+              class="flex items-center gap-2 px-6 py-3 bg-[#5a189a] hover:bg-[#7b2cbf] disabled:bg-gray-600 text-white rounded-lg shadow-lg shadow-[#5a189a]/20"
             >
-              {{ saving ? 'Sauvegarde...' : '💾 Sauvegarder' }}
+              <CheckIcon v-if="!saving" class="w-5 h-5" />
+              {{ saving ? 'Sauvegarde...' : 'Sauvegarder' }}
             </button>
             <button
               type="button"
@@ -121,7 +124,7 @@
         <div
           v-for="entry in entries"
           :key="entry.id"
-          class="bg-[#252525] rounded-lg p-6 border border-gray-800 hover:border-gray-700 transition-colors"
+          class="bg-[#1a1a1a] rounded-lg p-6 border border-gray-800 hover:border-gray-700 transition-colors shadow-lg"
         >
           <div class="flex justify-between items-start mb-4">
             <div>
@@ -134,15 +137,17 @@
             <div class="flex gap-2">
               <button
                 @click="editEntry(entry)"
-                class="text-gray-400 hover:text-white"
+                class="text-gray-400 hover:text-white transition-colors"
+                title="Modifier"
               >
-                ✏️
+                <PencilSquareIcon class="w-5 h-5" />
               </button>
               <button
                 @click="deleteEntry(entry.id)"
-                class="text-gray-400 hover:text-red-500"
+                class="text-gray-400 hover:text-red-500 transition-colors"
+                title="Supprimer"
               >
-                🗑️
+                <TrashIcon class="w-5 h-5" />
               </button>
             </div>
           </div>
@@ -178,7 +183,7 @@
       class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"
       @click.self="viewingEntry = null"
     >
-      <div class="bg-[#252525] rounded-lg p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+      <div class="bg-[#1a1a1a] rounded-lg p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
         <div class="flex justify-between items-start mb-4">
           <h2 class="text-2xl font-bold text-white">{{ viewingEntry.title }}</h2>
           <button
@@ -225,6 +230,13 @@
 import { ref, onMounted } from 'vue'
 import { journalAPI } from '@/services/parle-api'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import BackgroundWatermark from '@/components/BackgroundWatermark.vue'
+import { 
+  PlusIcon,
+  PencilSquareIcon,
+  TrashIcon,
+  CheckIcon
+} from '@heroicons/vue/24/outline'
 
 const entries = ref([])
 const loading = ref(false)

@@ -14,7 +14,7 @@ from app.core.auth import get_current_active_user
 from app.core.config import settings
 from app.models.user import User
 from app.models.recording import Recording
-from app.schemas import RecordingCreate, RecordingResponse
+from app.schemas import RecordingCreate, RecordingUpdate, RecordingResponse
 
 router = APIRouter()
 
@@ -98,6 +98,31 @@ async def get_recording(
         raise HTTPException(status_code=404, detail="Recording not found")
     
     return recording
+
+@router.put("/{recording_id}", response_model=RecordingResponse)
+async def update_recording(
+    recording_id: str,
+    recording_update: RecordingUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Mettre à jour un enregistrement"""
+    db_recording = db.query(Recording).filter(
+        Recording.id == recording_id,
+        Recording.user_id == current_user.id
+    ).first()
+    
+    if not db_recording:
+        raise HTTPException(status_code=404, detail="Recording not found")
+    
+    # Mettre à jour uniquement les champs fournis
+    update_data = recording_update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(db_recording, field, value)
+    
+    db.commit()
+    db.refresh(db_recording)
+    return db_recording
 
 @router.delete("/{recording_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_recording(

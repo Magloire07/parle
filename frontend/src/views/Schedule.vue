@@ -1,5 +1,6 @@
 <template>
-  <div class="min-h-screen bg-[#0a0a0a]">
+  <div class="min-h-screen bg-[#0a0a0a] relative">
+    <BackgroundWatermark />
     <!-- Header -->
     <header class="bg-[#252525] border-b border-gray-800">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -12,7 +13,7 @@
           </div>
           <button
             @click="showCreateModal = true"
-            class="px-4 py-2 bg-[#3b82f6] hover:bg-[#2563eb] text-white rounded-lg transition-colors"
+            class="px-4 py-2 bg-[#5a189a] hover:bg-[#7b2cbf] text-white rounded-lg transition-colors shadow-lg shadow-[#5a189a]/20"
           >
             + Ajouter un bloc
           </button>
@@ -20,7 +21,7 @@
       </div>
     </header>
 
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
       <!-- Week Selector -->
       <div class="flex items-center justify-between mb-6">
         <button
@@ -41,7 +42,7 @@
       </div>
 
       <!-- Calendar Grid -->
-      <div class="bg-[#252525] rounded-lg overflow-hidden border border-gray-800">
+      <div class="bg-[#1a1a1a] rounded-lg overflow-hidden border border-gray-800 shadow-xl">
         <div class="grid grid-cols-8 border-b border-gray-800">
           <div class="p-4"></div>
           <div
@@ -65,12 +66,12 @@
             class="p-2 border-l border-gray-800 min-h-[80px] relative hover:bg-[#1a1a1a] cursor-pointer"
             @click="selectTimeSlot(day.date, hour)"
           >
-            <div
-              v-for="block in getBlocksForSlot(day.date, hour)"
-              :key="block.id"
-              class="p-2 rounded bg-[#3b82f6] text-white text-xs mb-1 cursor-pointer hover:bg-[#2563eb]"
-              @click.stop="editBlock(block)"
-            >
+              <div
+                v-for="block in getBlocksForSlot(day.date, hour)"
+                :key="block.id"
+                class="p-2 rounded bg-[#5a189a] text-white text-xs mb-1 cursor-pointer hover:bg-[#7b2cbf] shadow-sm"
+                @click.stop="editBlock(block)"
+              >
               <div class="font-medium">{{ block.activity_name }}</div>
               <div class="text-[10px] opacity-75">
                 {{ formatTime(block.start_time) }} - {{ block.duration }}min
@@ -164,7 +165,7 @@
             <button
               type="submit"
               :disabled="saving"
-              class="flex-1 px-6 py-3 bg-[#3b82f6] hover:bg-[#2563eb] disabled:bg-gray-600 text-white rounded-lg"
+              class="flex-1 px-6 py-3 bg-[#5a189a] hover:bg-[#7b2cbf] disabled:bg-gray-600 text-white rounded-lg shadow-lg shadow-[#5a189a]/20"
             >
               {{ saving ? 'Enregistrement...' : 'Enregistrer' }}
             </button>
@@ -204,6 +205,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { scheduleAPI } from '@/services/parle-api'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import BackgroundWatermark from '@/components/BackgroundWatermark.vue'
 
 const currentWeekStart = ref(new Date())
 const scheduleBlocks = ref([])

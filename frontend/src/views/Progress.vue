@@ -1,5 +1,6 @@
 <template>
-  <div class="min-h-screen bg-[#0a0a0a]">
+  <div class="min-h-screen bg-[#0a0a0a] relative">
+    <BackgroundWatermark />
     <!-- Header -->
     <header class="bg-[#252525] border-b border-gray-800">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -14,7 +15,7 @@
       </div>
     </header>
 
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
       <!-- Date Range Selector -->
       <div class="mb-8 flex gap-4">
         <select
@@ -49,34 +50,37 @@
       <div v-else>
         <!-- Overview Cards -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div class="bg-[#252525] rounded-lg p-6 border border-gray-800">
-            <div class="text-4xl mb-2">📚</div>
+          <div class="bg-[#1a1a1a] rounded-lg p-6 border border-gray-800 shadow-lg">
+            <BookOpenIcon class="w-8 h-8 mb-2 text-blue-500" />
             <div class="text-3xl font-bold text-white mb-1">{{ stats.total_flashcards || 0 }}</div>
             <div class="text-sm text-gray-400">Flashcards créées</div>
           </div>
 
-          <div class="bg-[#252525] rounded-lg p-6 border border-gray-800">
-            <div class="text-4xl mb-2">🎯</div>
+          <div class="bg-[#1a1a1a] rounded-lg p-6 border border-gray-800 shadow-lg">
+            <CheckCircleIcon class="w-8 h-8 mb-2 text-green-500" />
             <div class="text-3xl font-bold text-white mb-1">{{ stats.total_reviews || 0 }}</div>
             <div class="text-sm text-gray-400">Révisions effectuées</div>
           </div>
 
-          <div class="bg-[#252525] rounded-lg p-6 border border-gray-800">
-            <div class="text-4xl mb-2">🎤</div>
+          <div class="bg-[#1a1a1a] rounded-lg p-6 border border-gray-800 shadow-lg">
+            <MicrophoneIcon class="w-8 h-8 mb-2 text-[#5a189a]" />
             <div class="text-3xl font-bold text-white mb-1">{{ stats.total_recordings || 0 }}</div>
             <div class="text-sm text-gray-400">Enregistrements audio</div>
           </div>
 
-          <div class="bg-[#252525] rounded-lg p-6 border border-gray-800">
-            <div class="text-4xl mb-2">📝</div>
+          <div class="bg-[#1a1a1a] rounded-lg p-6 border border-gray-800 shadow-lg">
+            <PencilSquareIcon class="w-8 h-8 mb-2 text-orange-500" />
             <div class="text-3xl font-bold text-white mb-1">{{ stats.total_journal_entries || 0 }}</div>
             <div class="text-sm text-gray-400">Entrées de journal</div>
           </div>
         </div>
 
         <!-- Study Time -->
-        <div class="bg-[#252525] rounded-lg p-6 mb-8 border border-gray-800">
-          <h3 class="text-xl font-bold text-white mb-4">⏱️ Temps d'étude</h3>
+        <div class="bg-[#1a1a1a] rounded-lg p-6 mb-8 border border-gray-800 shadow-lg">
+          <h3 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+            <ClockIcon class="w-6 h-6 text-blue-500" />
+            Temps d'étude
+          </h3>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div>
               <div class="text-2xl font-bold text-white">{{ formatMinutes(stats.total_study_time_minutes) }}</div>
@@ -94,8 +98,11 @@
         </div>
 
         <!-- Progression Chart -->
-        <div class="bg-[#252525] rounded-lg p-6 mb-8 border border-gray-800">
-          <h3 class="text-xl font-bold text-white mb-4">📈 Évolution des Flashcards par Catégorie</h3>
+        <div class="bg-[#1a1a1a] rounded-lg p-6 mb-8 border border-gray-800 shadow-lg">
+          <h3 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+            <ChartBarIcon class="w-6 h-6 text-green-500" />
+            Évolution des Flashcards par Catégorie
+          </h3>
           <div v-if="stats.progression_data && Object.keys(stats.progression_data).length > 0" class="h-80">
             <Line :data="chartData" :options="chartOptions" />
           </div>
@@ -105,8 +112,11 @@
         </div>
 
         <!-- Flashcards Stats -->
-        <div class="bg-[#252525] rounded-lg p-6 mb-8 border border-gray-800">
-          <h3 class="text-xl font-bold text-white mb-4">📊 Répartition des Flashcards</h3>
+        <div class="bg-[#1a1a1a] rounded-lg p-6 mb-8 border border-gray-800 shadow-lg">
+          <h3 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+            <ChartPieIcon class="w-6 h-6 text-indigo-500" />
+            Répartition des Flashcards
+          </h3>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <div class="text-sm text-gray-400 mb-2">Par catégorie</div>
@@ -142,8 +152,11 @@
         </div>
 
         <!-- Recent Activity -->
-        <div class="bg-[#252525] rounded-lg p-6 mb-8 border border-gray-800">
-          <h3 class="text-xl font-bold text-white mb-4">📈 Résumé</h3>
+        <div class="bg-[#1a1a1a] rounded-lg p-6 mb-8 border border-gray-800 shadow-lg">
+          <h3 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+            <PresentationChartLineIcon class="w-6 h-6 text-purple-500" />
+            Résumé
+          </h3>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <div class="text-sm text-gray-400 mb-2">Enregistrements audio</div>
@@ -167,6 +180,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { progressAPI } from '@/services/parle-api'
+import BackgroundWatermark from '@/components/BackgroundWatermark.vue'
 import { Line } from 'vue-chartjs'
 import {
   Chart as ChartJS,
@@ -179,6 +193,16 @@ import {
   Legend,
   Filler
 } from 'chart.js'
+import {
+  BookOpenIcon,
+  CheckCircleIcon,
+  MicrophoneIcon,
+  PencilSquareIcon,
+  ClockIcon,
+  ChartBarIcon,
+  ChartPieIcon,
+  PresentationChartLineIcon
+} from '@heroicons/vue/24/outline'
 
 // Enregistrer les composants Chart.js
 ChartJS.register(
